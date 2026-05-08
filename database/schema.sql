@@ -130,6 +130,8 @@ CREATE TABLE IF NOT EXISTS applications (
   candidate_id INT UNSIGNED NOT NULL,
   application_link_id INT UNSIGNED NULL,
   application_status ENUM('new', 'reviewed', 'shortlisted', 'interview', 'rejected', 'filtered_out') NOT NULL DEFAULT 'new',
+  is_shortlisted TINYINT(1) NOT NULL DEFAULT 0,
+  interview_sent_at DATETIME NULL,
   eligibility_status ENUM('eligible', 'filtered_out', 'pending') NOT NULL DEFAULT 'pending',
   eligibility_reason TEXT NULL,
   total_score DECIMAL(5,2) NULL,

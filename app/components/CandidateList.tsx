@@ -79,6 +79,8 @@ interface Candidate {
   appliedDate: string;
   rank: number | null;
   status: CandidateStatus;
+  isShortlisted: boolean;
+  interviewSentAt?: string | null;
   experience: string;
   education: string;
   cgpa?: string;
@@ -185,6 +187,8 @@ type ApiCandidate = {
   appliedDate: string;
   rank: string | number | null;
   status: CandidateStatus;
+  isShortlisted: boolean | number | string;
+  interviewSentAt: string | null;
   eligibilityStatus: string;
   eligibilityReason: string | null;
   score: string | number | null;
@@ -243,6 +247,15 @@ const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
     appliedDate: formatDateOnly(candidate.appliedDate),
     rank: candidate.rank === null ? null : Number(candidate.rank),
     status: candidate.status,
+    isShortlisted:
+      candidate.status === "shortlisted" ||
+      candidate.status === "interview" ||
+      candidate.isShortlisted === true ||
+      candidate.isShortlisted === 1 ||
+      candidate.isShortlisted === "1",
+    interviewSentAt:
+      candidate.interviewSentAt ||
+      (candidate.status === "interview" ? candidate.appliedDate : null),
     experience: candidate.eligibilityReason || "Resume parsed from database",
     education: candidate.eligibilityStatus === "eligible" ? "Meets eligibility filter" : "Filtered out by eligibility filter",
     cgpa: candidate.cgpa === null ? "-" : String(candidate.cgpa),
@@ -423,6 +436,8 @@ export function CandidateList() {
       appliedDate: new Date().toISOString().split("T")[0],
       rank: null,
       status: "new",
+      isShortlisted: false,
+      interviewSentAt: null,
       experience: "Pending analysis",
       education: "Pending analysis",
       cgpa: "-",
@@ -454,6 +469,10 @@ export function CandidateList() {
 
       const matchesStatus =
         filterStatus === "all" ||
+        (filterStatus === "shortlisted" &&
+          candidate.isShortlisted) ||
+        (filterStatus === "interview" &&
+          Boolean(candidate.interviewSentAt)) ||
         candidate.status === filterStatus;
 
       return matchesSearch && matchesStatus;
@@ -546,7 +565,30 @@ export function CandidateList() {
     setCandidates((prev) => {
       const updated = prev.map((candidate) =>
         candidate.id === candidateId
-          ? { ...candidate, status: newStatus }
+          ? {
+              ...candidate,
+              status:
+                newStatus === "shortlisted" ||
+                newStatus === "reviewed"
+                  ? candidate.status === "interview"
+                    ? "interview"
+                    : newStatus
+                  : newStatus,
+              isShortlisted:
+                newStatus === "shortlisted"
+                  ? true
+                  : newStatus === "reviewed" ||
+                      newStatus === "rejected"
+                    ? false
+                    : newStatus === "interview"
+                      ? true
+                      : candidate.isShortlisted,
+              interviewSentAt:
+                newStatus === "interview"
+                  ? candidate.interviewSentAt ||
+                    new Date().toISOString()
+                  : candidate.interviewSentAt,
+            }
           : candidate,
       );
 
@@ -586,7 +628,7 @@ export function CandidateList() {
     if (candidate.status === "rejected") return;
 
     const newStatus: CandidateStatus =
-      candidate.status === "shortlisted"
+      candidate.isShortlisted
         ? "reviewed"
         : "shortlisted";
 
@@ -856,7 +898,7 @@ export function CandidateList() {
               {
                 candidates.filter(
                   (candidate) =>
-                    candidate.status === "interview",
+                    Boolean(candidate.interviewSentAt),
                 ).length
               }
             </div>
@@ -873,8 +915,7 @@ export function CandidateList() {
             <div className="text-2xl font-bold">
               {
                 candidates.filter(
-                  (candidate) =>
-                    candidate.status === "shortlisted",
+                  (candidate) => candidate.isShortlisted,
                 ).length
               }
             </div>
@@ -884,8 +925,10 @@ export function CandidateList() {
 
       <div className="space-y-4">
         {pagedCandidates.map((candidate) => {
-          const isShortlisted =
-            candidate.status === "shortlisted";
+          const isShortlisted = candidate.isShortlisted;
+          const hasInterviewSent = Boolean(
+            candidate.interviewSentAt,
+          );
 
           return (
             <Card
@@ -950,6 +993,19 @@ export function CandidateList() {
                           >
                             {getStatusLabel(candidate.status)}
                           </Badge>
+                          {isShortlisted &&
+                            candidate.status !== "shortlisted" &&
+                            candidate.status !== "rejected" && (
+                              <Badge className="bg-amber-500">
+                                SHORTLISTED
+                              </Badge>
+                            )}
+                          {hasInterviewSent &&
+                            candidate.status !== "interview" && (
+                              <Badge className="bg-blue-600">
+                                INTERVIEW
+                              </Badge>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm text-slate-600">
@@ -1238,11 +1294,14 @@ export function CandidateList() {
                           handleSendInterviewEmail(candidate)
                         }
                         disabled={
-                          candidate.status === "rejected"
+                          candidate.status === "rejected" ||
+                          hasInterviewSent
                         }
                       >
                         <Mail className="w-4 h-4 mr-2" />
-                        Send Interview Email
+                        {hasInterviewSent
+                          ? "Interview Email Sent"
+                          : "Send Interview Email"}
                       </Button>
 
                       <Button

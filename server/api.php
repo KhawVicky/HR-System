@@ -256,6 +256,8 @@ function job_candidates(mysqli $db, int $jobId): void
           a.submitted_at AS appliedDate,
           a.rank_no AS rank,
           a.application_status AS status,
+          a.is_shortlisted AS isShortlisted,
+          a.interview_sent_at AS interviewSentAt,
           a.eligibility_status AS eligibilityStatus,
           a.eligibility_reason AS eligibilityReason,
           a.total_score AS score,
@@ -340,9 +342,24 @@ function update_application(mysqli $db, int $applicationId): void
         respond(["error" => "Invalid application status"], 422);
     }
 
-    exec_stmt($db, "UPDATE applications SET application_status = ?, reviewed_at = NOW() WHERE id = ?", "si", [$status, $applicationId]);
-    exec_stmt($db, "UPDATE candidate_job_history SET status = ? WHERE application_id = ?", "si", [$status, $applicationId]);
-    respond(["ok" => true]);
+    if ($status === "shortlisted") {
+        exec_stmt($db, "UPDATE applications SET is_shortlisted = 1, application_status = IF(application_status = 'interview', application_status, 'shortlisted'), reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
+    } elseif ($status === "reviewed") {
+        exec_stmt($db, "UPDATE applications SET is_shortlisted = 0, application_status = IF(application_status = 'interview', application_status, 'reviewed'), reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
+    } elseif ($status === "interview") {
+        exec_stmt($db, "UPDATE applications SET is_shortlisted = 1, interview_sent_at = COALESCE(interview_sent_at, NOW()), application_status = 'interview', reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
+    } elseif ($status === "rejected") {
+        exec_stmt($db, "UPDATE applications SET application_status = 'rejected', is_shortlisted = 0, reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
+    } else {
+        exec_stmt($db, "UPDATE applications SET application_status = ?, reviewed_at = NOW() WHERE id = ?", "si", [$status, $applicationId]);
+    }
+
+    $updated = row($db, "SELECT application_status, is_shortlisted, interview_sent_at FROM applications WHERE id = ?", "i", [$applicationId]);
+    $historyStatus = $updated && (int) $updated["is_shortlisted"] === 1 && $updated["application_status"] !== "interview"
+        ? "shortlisted"
+        : $status;
+    exec_stmt($db, "UPDATE candidate_job_history SET status = ? WHERE application_id = ?", "si", [$historyStatus, $applicationId]);
+    respond(["ok" => true, "application" => $updated ?: []]);
 }
 
 function apply_job(mysqli $db, string $jobCode): void
