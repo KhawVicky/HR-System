@@ -353,7 +353,7 @@ export function ApplyJob() {
 
   if (isSubmitted) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="flex min-h-screen flex-col bg-slate-50">
         <header className="border-b border-slate-200 bg-white">
           <div className="mx-auto flex h-16 max-w-6xl items-center px-6 lg:px-8">
             <div className="flex items-center gap-3">
@@ -376,7 +376,7 @@ export function ApplyJob() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-4xl px-6 py-10 lg:px-8">
+        <main className="mx-auto flex w-full max-w-4xl flex-1 items-center px-6 py-10 lg:px-8">
           <Card className="mx-auto max-w-2xl rounded-2xl border-slate-200 shadow-sm">
             <CardContent className="pt-12 pb-12 text-center">
               <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
@@ -403,10 +403,10 @@ export function ApplyJob() {
               </div>
 
               <Button
-                onClick={() => (window.location.href = "/")}
+                onClick={() => setIsSubmitted(false)}
                 className="bg-[#003B7A] hover:bg-[#002f63] text-white shadow-sm px-5"
               >
-                Back to Home
+                Back to Form
               </Button>
             </CardContent>
           </Card>
