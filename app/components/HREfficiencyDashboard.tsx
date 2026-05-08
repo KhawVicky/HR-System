@@ -25,6 +25,14 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { apiFetch } from "../lib/api";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "./ui/pagination";
 
 type CandidateProcessing = {
   candidateName: string;
@@ -35,10 +43,13 @@ type CandidateProcessing = {
   hrAssigned: string;
 };
 
+const PROCESSING_DETAILS_PER_PAGE = 15;
+
 export function HREfficiencyDashboard() {
   const [processingData, setProcessingData] = useState<
     CandidateProcessing[]
   >([]);
+  const [processingPage, setProcessingPage] = useState(1);
 
   useEffect(() => {
     apiFetch<{ details: CandidateProcessing[] }>("/hr-efficiency")
@@ -139,6 +150,20 @@ export function HREfficiencyDashboard() {
       ? processingData.map((item) => item.processingDays)
       : [0]),
   );
+  const processingPageCount = Math.max(
+    1,
+    Math.ceil(
+      processingData.length / PROCESSING_DETAILS_PER_PAGE,
+    ),
+  );
+  const pagedProcessingData = processingData.slice(
+    (processingPage - 1) * PROCESSING_DETAILS_PER_PAGE,
+    processingPage * PROCESSING_DETAILS_PER_PAGE,
+  );
+
+  useEffect(() => {
+    setProcessingPage(1);
+  }, [processingData.length]);
 
   return (
     <PageLayout
@@ -295,7 +320,7 @@ export function HREfficiencyDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {processingData.map((item, index) => (
+                  {pagedProcessingData.map((item, index) => (
                     <tr key={index}>
                       <td className="py-3 text-sm text-slate-900">
                         {item.candidateName}
@@ -334,6 +359,67 @@ export function HREfficiencyDashboard() {
                 </tbody>
               </table>
             </div>
+            {processingData.length > PROCESSING_DETAILS_PER_PAGE && (
+              <Pagination className="mt-6">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setProcessingPage((page) =>
+                          Math.max(1, page - 1),
+                        );
+                      }}
+                      className={
+                        processingPage === 1
+                          ? "pointer-events-none opacity-50"
+                          : ""
+                      }
+                    />
+                  </PaginationItem>
+                  {Array.from({
+                    length: processingPageCount,
+                  }).map((_, index) => {
+                    const page = index + 1;
+
+                    return (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          href="#"
+                          isActive={processingPage === page}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setProcessingPage(page);
+                          }}
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    );
+                  })}
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setProcessingPage((page) =>
+                          Math.min(
+                            processingPageCount,
+                            page + 1,
+                          ),
+                        );
+                      }}
+                      className={
+                        processingPage === processingPageCount
+                          ? "pointer-events-none opacity-50"
+                          : ""
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            )}
           </CardContent>
         </Card>
       </div>

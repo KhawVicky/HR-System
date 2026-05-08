@@ -69,3 +69,4 @@
 - Removed the `roles` table. Role is now stored directly in `users.role_id` where `1 = HR Staff` and `2 = Hiring Manager`; Admin role has been removed.
 - User Management Create Account now writes new users into the database through `POST /users`.
 - Verified user creation with `test.staff@uwc.com.my` using role `1 = HR Staff`.
+- HR Efficiency Dashboard Recent Processing Details now paginates at 15 records per page.
