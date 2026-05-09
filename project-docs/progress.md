@@ -73,3 +73,4 @@
 - Candidate shortlist and interview-sent state are now separate: candidates can show both Shortlisted and Interview, and the interview email button is disabled after sending.
 - Removed candidate eligibility explanation from the Candidate UI and dropped `applications.eligibility_reason` from the database.
 - Candidate cards now show experience again using `candidates.years_experience`, separate from eligibility explanation text.
+- Applied Job History now excludes the current application so it only shows other jobs the candidate applied for.

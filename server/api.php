@@ -293,10 +293,10 @@ function job_candidates(mysqli $db, int $jobId): void
             "SELECT j.id AS jobId, j.title AS jobTitle, j.department, cjh.score, cjh.rank_no AS rank, cjh.status
              FROM candidate_job_history cjh
              JOIN jobs j ON j.id = cjh.job_id
-             WHERE cjh.candidate_id = ?
+             WHERE cjh.candidate_id = ? AND cjh.application_id <> ?
              ORDER BY cjh.recorded_at DESC",
-            "i",
-            [(int) $candidate["id"]]
+            "ii",
+            [(int) $candidate["id"], (int) $candidate["applicationId"]]
         );
     }
 
