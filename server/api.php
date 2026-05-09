@@ -251,6 +251,7 @@ function job_candidates(mysqli $db, int $jobId): void
           c.email,
           c.phone,
           c.current_cgpa AS cgpa,
+          c.years_experience AS yearsExperience,
           c.notice_period_days AS noticePeriodDays,
           c.current_location AS currentLocation,
           a.submitted_at AS appliedDate,
@@ -401,8 +402,8 @@ function submit_application(mysqli $db, string $jobCode): void
 
     exec_stmt(
         $db,
-        "INSERT INTO candidates (full_name, email, phone, current_cgpa, notice_period_days)
-         VALUES (?, ?, ?, ?, ?)
+        "INSERT INTO candidates (full_name, email, phone, current_cgpa, years_experience, notice_period_days)
+         VALUES (?, ?, ?, ?, NULL, ?)
          ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), phone = VALUES(phone), current_cgpa = VALUES(current_cgpa), notice_period_days = VALUES(notice_period_days)",
         "sssdi",
         [$fullName, $email, $phone, $cgpa, $noticePeriodDays]

@@ -183,6 +183,7 @@ type ApiCandidate = {
   email: string;
   phone: string;
   cgpa: string | number | null;
+  yearsExperience: string | number | null;
   noticePeriodDays: string | number | null;
   appliedDate: string;
   rank: string | number | null;
@@ -223,6 +224,16 @@ const CANDIDATES_PER_PAGE = 15;
 
 const formatDateOnly = (value: string) => value.slice(0, 10);
 
+const formatExperience = (value: string | number | null) => {
+  if (value === null || value === "") return "";
+
+  const years = Number(value);
+  if (Number.isNaN(years) || years <= 0) return "";
+
+  const label = years === 1 ? "year" : "years";
+  return `${Number.isInteger(years) ? years : years.toFixed(1)} ${label}`;
+};
+
 const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
   const scoreBreakdown = calculateScoreBreakdown(
     (candidate.scoreBreakdown ?? []).map((item, index) => ({
@@ -255,7 +266,7 @@ const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
     interviewSentAt:
       candidate.interviewSentAt ||
       (candidate.status === "interview" ? candidate.appliedDate : null),
-    experience: "",
+    experience: formatExperience(candidate.yearsExperience),
     education: "",
     cgpa: candidate.cgpa === null ? "-" : String(candidate.cgpa),
     noticePeriod: candidate.noticePeriodDays

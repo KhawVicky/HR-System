@@ -79,23 +79,24 @@ ON DUPLICATE KEY UPDATE
   required_location = VALUES(required_location),
   max_notice_period_days = VALUES(max_notice_period_days);
 
-INSERT INTO candidates (id, full_name, email, phone, current_cgpa, notice_period_days, current_location) VALUES
-  (100, 'Liyana Rahman', 'liyana.rahman@example.com', '+6012-7000001', 3.86, 30, 'Penang'),
-  (101, 'Marcus Tan', 'marcus.tan@example.com', '+6012-7000002', 3.58, 45, 'Penang'),
-  (102, 'Priya Nair', 'priya.nair@example.com', '+6012-7000003', 3.91, 30, 'Kedah'),
-  (103, 'Ong Jun Hao', 'ong.junhao@example.com', '+6012-7000004', 3.44, 30, 'Penang'),
-  (104, 'Nur Iman', 'nur.iman@example.com', '+6012-7000005', 3.27, 60, 'Perak'),
-  (105, 'Samantha Lim', 'samantha.lim@example.com', '+6012-7000006', 3.73, 30, 'Penang'),
-  (106, 'Kevin Goh', 'kevin.goh@example.com', '+6012-7000007', 3.19, 45, 'Penang'),
-  (107, 'Rachel Ong', 'rachel.ong@example.com', '+6012-7000008', 3.67, 30, 'Penang'),
-  (108, 'Hafiz Ismail', 'hafiz.ismail@example.com', '+6012-7000009', 3.36, 60, 'Kuala Lumpur'),
-  (109, 'Chloe Wong', 'chloe.wong@example.com', '+6012-7000010', 3.82, 30, 'Penang'),
-  (110, 'Daniel Wong', 'daniel.wong@example.com', '+6012-7000011', 3.08, 45, 'Penang'),
-  (111, 'Siti Mariam', 'siti.mariam@example.com', '+6012-7000012', 3.50, 30, 'Kedah')
+INSERT INTO candidates (id, full_name, email, phone, current_cgpa, years_experience, notice_period_days, current_location) VALUES
+  (100, 'Liyana Rahman', 'liyana.rahman@example.com', '+6012-7000001', 3.86, 4.0, 30, 'Penang'),
+  (101, 'Marcus Tan', 'marcus.tan@example.com', '+6012-7000002', 3.58, 3.0, 45, 'Penang'),
+  (102, 'Priya Nair', 'priya.nair@example.com', '+6012-7000003', 3.91, 7.0, 30, 'Kedah'),
+  (103, 'Ong Jun Hao', 'ong.junhao@example.com', '+6012-7000004', 3.44, 4.0, 30, 'Penang'),
+  (104, 'Nur Iman', 'nur.iman@example.com', '+6012-7000005', 3.27, 2.0, 60, 'Perak'),
+  (105, 'Samantha Lim', 'samantha.lim@example.com', '+6012-7000006', 3.73, 6.0, 30, 'Penang'),
+  (106, 'Kevin Goh', 'kevin.goh@example.com', '+6012-7000007', 3.19, 2.0, 45, 'Penang'),
+  (107, 'Rachel Ong', 'rachel.ong@example.com', '+6012-7000008', 3.67, 5.0, 30, 'Penang'),
+  (108, 'Hafiz Ismail', 'hafiz.ismail@example.com', '+6012-7000009', 3.36, 3.0, 60, 'Kuala Lumpur'),
+  (109, 'Chloe Wong', 'chloe.wong@example.com', '+6012-7000010', 3.82, 5.0, 30, 'Penang'),
+  (110, 'Daniel Wong', 'daniel.wong@example.com', '+6012-7000011', 3.08, 2.0, 45, 'Penang'),
+  (111, 'Siti Mariam', 'siti.mariam@example.com', '+6012-7000012', 3.50, 4.0, 30, 'Kedah')
 ON DUPLICATE KEY UPDATE
   full_name = VALUES(full_name),
   phone = VALUES(phone),
   current_cgpa = VALUES(current_cgpa),
+  years_experience = VALUES(years_experience),
   notice_period_days = VALUES(notice_period_days),
   current_location = VALUES(current_location);
 

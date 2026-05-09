@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS candidates (
   email VARCHAR(180) NOT NULL,
   phone VARCHAR(40) NULL,
   current_cgpa DECIMAL(3,2) NULL,
+  years_experience DECIMAL(4,1) NULL,
   notice_period_days INT UNSIGNED NULL,
   current_location VARCHAR(180) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -362,13 +363,14 @@ ON DUPLICATE KEY UPDATE
   public_path = VALUES(public_path),
   status = VALUES(status);
 
-INSERT INTO candidates (id, full_name, email, phone, current_cgpa, notice_period_days, current_location) VALUES
-  (1, 'Alice Chen', 'alice.chen@example.com', '+6012-1111111', 3.92, 30, 'Penang'),
-  (2, 'Daniel Tan', 'daniel.tan@example.com', '+6012-2222222', 2.85, 45, 'Kuala Lumpur')
+INSERT INTO candidates (id, full_name, email, phone, current_cgpa, years_experience, notice_period_days, current_location) VALUES
+  (1, 'Alice Chen', 'alice.chen@example.com', '+6012-1111111', 3.92, 8.0, 30, 'Penang'),
+  (2, 'Daniel Tan', 'daniel.tan@example.com', '+6012-2222222', 2.85, 2.0, 45, 'Kuala Lumpur')
 ON DUPLICATE KEY UPDATE
   full_name = VALUES(full_name),
   phone = VALUES(phone),
   current_cgpa = VALUES(current_cgpa),
+  years_experience = VALUES(years_experience),
   notice_period_days = VALUES(notice_period_days),
   current_location = VALUES(current_location);
 

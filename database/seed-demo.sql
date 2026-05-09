@@ -73,21 +73,22 @@ ON DUPLICATE KEY UPDATE
   required_location = VALUES(required_location),
   max_notice_period_days = VALUES(max_notice_period_days);
 
-INSERT INTO candidates (id, full_name, email, phone, current_cgpa, notice_period_days, current_location) VALUES
-  (3, 'Bob Martinez', 'bob.martinez@example.com', '+6011-23456789', 3.81, 30, 'Penang'),
-  (4, 'Carol Johnson', 'carol.johnson@example.com', '+6013-4567890', 3.68, 30, 'Penang'),
-  (5, 'David Kim', 'david.kim@example.com', '+6014-5678901', 3.45, 30, 'Penang'),
-  (6, 'Emma Wilson', 'emma.wilson@example.com', '+6016-7890123', 2.74, 30, 'Kuala Lumpur'),
-  (7, 'Farah Ahmad', 'farah.ahmad@example.com', '+6017-1010101', 3.55, 45, 'Penang'),
-  (8, 'Goh Wei Ming', 'wei.ming@example.com', '+6018-2020202', 3.33, 30, 'Penang'),
-  (9, 'Nur Aisyah', 'nur.aisyah@example.com', '+6019-3030303', 3.72, 60, 'Kedah'),
-  (10, 'Jason Lee', 'jason.lee@example.com', '+6012-4040404', 3.20, 45, 'Penang'),
-  (11, 'Mei Ling', 'mei.ling@example.com', '+6016-5050505', 3.90, 30, 'Penang'),
-  (12, 'Arjun Kumar', 'arjun.kumar@example.com', '+6017-6060606', 3.10, 60, 'Perak')
+INSERT INTO candidates (id, full_name, email, phone, current_cgpa, years_experience, notice_period_days, current_location) VALUES
+  (3, 'Bob Martinez', 'bob.martinez@example.com', '+6011-23456789', 3.81, 6.0, 30, 'Penang'),
+  (4, 'Carol Johnson', 'carol.johnson@example.com', '+6013-4567890', 3.68, 5.0, 30, 'Penang'),
+  (5, 'David Kim', 'david.kim@example.com', '+6014-5678901', 3.45, 4.0, 30, 'Penang'),
+  (6, 'Emma Wilson', 'emma.wilson@example.com', '+6016-7890123', 2.74, 3.0, 30, 'Kuala Lumpur'),
+  (7, 'Farah Ahmad', 'farah.ahmad@example.com', '+6017-1010101', 3.55, 5.0, 45, 'Penang'),
+  (8, 'Goh Wei Ming', 'wei.ming@example.com', '+6018-2020202', 3.33, 4.0, 30, 'Penang'),
+  (9, 'Nur Aisyah', 'nur.aisyah@example.com', '+6019-3030303', 3.72, 4.0, 60, 'Kedah'),
+  (10, 'Jason Lee', 'jason.lee@example.com', '+6012-4040404', 3.20, 3.0, 45, 'Penang'),
+  (11, 'Mei Ling', 'mei.ling@example.com', '+6016-5050505', 3.90, 5.0, 30, 'Penang'),
+  (12, 'Arjun Kumar', 'arjun.kumar@example.com', '+6017-6060606', 3.10, 3.0, 60, 'Perak')
 ON DUPLICATE KEY UPDATE
   full_name = VALUES(full_name),
   phone = VALUES(phone),
   current_cgpa = VALUES(current_cgpa),
+  years_experience = VALUES(years_experience),
   notice_period_days = VALUES(notice_period_days),
   current_location = VALUES(current_location);
 
