@@ -259,7 +259,6 @@ function job_candidates(mysqli $db, int $jobId): void
           a.is_shortlisted AS isShortlisted,
           a.interview_sent_at AS interviewSentAt,
           a.eligibility_status AS eligibilityStatus,
-          a.eligibility_reason AS eligibilityReason,
           a.total_score AS score,
           a.ai_summary AS summary,
           r.stored_file_path AS resumeUrl,
@@ -420,15 +419,14 @@ function submit_application(mysqli $db, string $jobCode): void
     $eligible = (!$eligibility || ($cgpa >= (float) $eligibility["minCgpa"] && ($noticePeriodDays === 0 || $noticePeriodDays <= (int) $eligibility["maxNoticePeriodDays"])));
     $status = $eligible ? "new" : "filtered_out";
     $eligibilityStatus = $eligible ? "eligible" : "filtered_out";
-    $reason = $eligible ? "Candidate passed minimum eligibility checks." : "Candidate did not meet one or more eligibility filters.";
     $score = $eligible ? 72.00 : 55.00;
 
     exec_stmt(
         $db,
-        "INSERT INTO applications (job_id, candidate_id, application_link_id, application_status, eligibility_status, eligibility_reason, total_score, ai_summary)
-         VALUES (?, ?, (SELECT id FROM application_links WHERE job_id = ?), ?, ?, ?, ?, ?)",
-        "iiisssds",
-        [(int) $job["id"], (int) $candidate["id"], (int) $job["id"], $status, $eligibilityStatus, $reason, $score, "$fullName submitted an application and is ready for HR review."]
+        "INSERT INTO applications (job_id, candidate_id, application_link_id, application_status, eligibility_status, total_score, ai_summary)
+         VALUES (?, ?, (SELECT id FROM application_links WHERE job_id = ?), ?, ?, ?, ?)",
+        "iiissds",
+        [(int) $job["id"], (int) $candidate["id"], (int) $job["id"], $status, $eligibilityStatus, $score, "$fullName submitted an application and is ready for HR review."]
     );
 
     $applicationId = $db->insert_id;
@@ -596,7 +594,7 @@ function attendance_analytics(mysqli $db): void
             ELSE 'rescheduled'
           END AS status,
           CASE WHEN a.application_status = 'interview' THEN 1 ELSE 0 END AS onTime,
-          COALESCE(a.eligibility_reason, 'Recorded from recruitment workflow database.') AS notes
+          'Recorded from recruitment workflow database.' AS notes
          FROM applications a
          JOIN candidates c ON c.id = a.candidate_id
          JOIN jobs j ON j.id = a.job_id

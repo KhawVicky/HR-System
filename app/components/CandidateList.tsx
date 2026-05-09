@@ -190,7 +190,6 @@ type ApiCandidate = {
   isShortlisted: boolean | number | string;
   interviewSentAt: string | null;
   eligibilityStatus: string;
-  eligibilityReason: string | null;
   score: string | number | null;
   summary: string | null;
   resumeUrl: string | null;
@@ -256,8 +255,8 @@ const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
     interviewSentAt:
       candidate.interviewSentAt ||
       (candidate.status === "interview" ? candidate.appliedDate : null),
-    experience: candidate.eligibilityReason || "Resume parsed from database",
-    education: candidate.eligibilityStatus === "eligible" ? "Meets eligibility filter" : "Filtered out by eligibility filter",
+    experience: "",
+    education: "",
     cgpa: candidate.cgpa === null ? "-" : String(candidate.cgpa),
     noticePeriod: candidate.noticePeriodDays
       ? `${candidate.noticePeriodDays} days`
@@ -1026,10 +1025,12 @@ export function CandidateList() {
                             ).toLocaleDateString()}
                           </div>
 
-                          <div className="flex items-center gap-1">
-                            <Award className="w-3 h-3" />
-                            {candidate.experience} experience
-                          </div>
+                          {candidate.experience && (
+                            <div className="flex items-center gap-1">
+                              <Award className="w-3 h-3" />
+                              {candidate.experience} experience
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

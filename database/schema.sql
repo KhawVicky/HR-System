@@ -133,7 +133,6 @@ CREATE TABLE IF NOT EXISTS applications (
   is_shortlisted TINYINT(1) NOT NULL DEFAULT 0,
   interview_sent_at DATETIME NULL,
   eligibility_status ENUM('eligible', 'filtered_out', 'pending') NOT NULL DEFAULT 'pending',
-  eligibility_reason TEXT NULL,
   total_score DECIMAL(5,2) NULL,
   rank_no INT UNSIGNED NULL,
   ai_summary TEXT NULL,
@@ -375,24 +374,23 @@ ON DUPLICATE KEY UPDATE
 
 INSERT INTO applications (
   id, job_id, candidate_id, application_link_id, application_status,
-  eligibility_status, eligibility_reason, total_score, rank_no, ai_summary
+  eligibility_status, total_score, rank_no, ai_summary
 ) VALUES
   (
     1, 1, 1, (SELECT id FROM application_links WHERE job_id = 1), 'shortlisted',
-    'eligible', 'Candidate meets minimum CGPA, experience, qualification, language, and notice period requirements.',
+    'eligible',
     88.50, 1,
-    'Alice Chen is a highly ranked frontend candidate with strong React, TypeScript, Node.js and AWS experience. She meets the minimum eligibility requirements and is suitable for HR review.'
+    'Alice Chen is a highly ranked frontend candidate with strong React, TypeScript, Node.js and AWS experience. She is suitable for HR review.'
   ),
   (
     2, 1, 2, (SELECT id FROM application_links WHERE job_id = 1), 'filtered_out',
-    'filtered_out', 'Candidate CGPA is below the minimum requirement of 3.00.',
+    'filtered_out',
     67.00, NULL,
-    'Daniel Tan has relevant frontend exposure but does not meet the minimum CGPA eligibility filter. HR may still review the score breakdown.'
+    'Daniel Tan has relevant frontend exposure and can be reviewed through the score breakdown.'
   )
 ON DUPLICATE KEY UPDATE
   application_status = VALUES(application_status),
   eligibility_status = VALUES(eligibility_status),
-  eligibility_reason = VALUES(eligibility_reason),
   total_score = VALUES(total_score),
   rank_no = VALUES(rank_no),
   ai_summary = VALUES(ai_summary);
@@ -422,7 +420,7 @@ INSERT INTO score_breakdowns (id, candidate_score_id, criteria_id, raw_score, we
   (4, 1, 4, 80.67, 15.00, 12.10, 'Resume indicates collaboration and communication experience.'),
   (5, 2, 1, 72.00, 40.00, 28.80, 'React mentioned, TypeScript detail is limited, AWS not found.'),
   (6, 2, 2, 70.00, 25.00, 17.50, 'Experience is relevant but less senior.'),
-  (7, 2, 3, 55.00, 20.00, 11.00, 'Education is relevant but CGPA is below eligibility requirement.'),
+  (7, 2, 3, 55.00, 20.00, 11.00, 'Education is relevant to the role.'),
   (8, 2, 4, 64.67, 15.00, 9.70, 'Some teamwork evidence found.')
 ON DUPLICATE KEY UPDATE
   raw_score = VALUES(raw_score),
@@ -474,7 +472,7 @@ ON DUPLICATE KEY UPDATE
 
 INSERT INTO notifications (user_id, notification_type, title, message) VALUES
   (2, 'new_application', 'New candidate application', 'Alice Chen submitted an application for Senior Frontend Developer.'),
-  (2, 'filtered_out', 'Candidate filtered out', 'Daniel Tan did not meet the minimum CGPA eligibility filter.');
+  (2, 'filtered_out', 'Candidate filtered out', 'Daniel Tan was reviewed through the score breakdown.');
 
 INSERT INTO attendance_records (user_id, attendance_date, status, check_in_time, check_out_time, remarks) VALUES
   (2, CURRENT_DATE, 'present', '08:55:00', NULL, 'Optional attendance analytics demo record.')
@@ -483,3 +481,4 @@ ON DUPLICATE KEY UPDATE
   check_in_time = VALUES(check_in_time),
   check_out_time = VALUES(check_out_time),
   remarks = VALUES(remarks);
+

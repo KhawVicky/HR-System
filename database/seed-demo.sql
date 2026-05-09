@@ -93,22 +93,21 @@ ON DUPLICATE KEY UPDATE
 
 INSERT INTO applications (
   id, job_id, candidate_id, application_link_id, application_status,
-  eligibility_status, eligibility_reason, total_score, rank_no, ai_summary, submitted_at, reviewed_at
+  eligibility_status, total_score, rank_no, ai_summary, submitted_at, reviewed_at
 ) VALUES
-  (3, 1, 3, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 'Candidate meets minimum eligibility filters.', 83.00, 2, 'Bob Martinez is a strong frontend candidate with React, JavaScript, Python and Docker experience.', '2026-03-24 09:00:00', '2026-03-25 11:00:00'),
-  (4, 1, 4, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 'Candidate meets minimum eligibility filters.', 76.00, 3, 'Carol Johnson has relevant React, Vue.js, GraphQL and MongoDB experience.', '2026-03-23 09:00:00', '2026-03-24 14:00:00'),
-  (5, 1, 5, (SELECT id FROM application_links WHERE job_id = 1), 'new', 'eligible', 'Candidate meets minimum eligibility filters.', 74.00, 4, 'David Kim has React, Angular, Java and PostgreSQL experience.', '2026-03-22 09:00:00', NULL),
-  (6, 1, 6, (SELECT id FROM application_links WHERE job_id = 1), 'filtered_out', 'filtered_out', 'Candidate CGPA is below the minimum requirement of 3.00.', 55.00, NULL, 'Emma Wilson has frontend skills but failed the minimum CGPA filter.', '2026-03-21 09:00:00', '2026-03-22 10:00:00'),
-  (7, 2, 7, (SELECT id FROM application_links WHERE job_id = 2), 'shortlisted', 'eligible', 'Candidate meets minimum eligibility filters.', 86.00, 1, 'Farah Ahmad shows strong product coordination and stakeholder communication.', '2026-03-25 10:00:00', '2026-03-26 10:00:00'),
-  (8, 2, 8, (SELECT id FROM application_links WHERE job_id = 2), 'reviewed', 'eligible', 'Candidate meets minimum eligibility filters.', 78.00, 2, 'Goh Wei Ming has business analysis and agile project exposure.', '2026-03-26 10:00:00', '2026-03-27 11:00:00'),
-  (9, 3, 9, (SELECT id FROM application_links WHERE job_id = 3), 'interview', 'eligible', 'Candidate meets minimum eligibility filters.', 85.00, 1, 'Nur Aisyah has strong UX and design research experience.', '2026-03-01 09:00:00', '2026-03-02 09:00:00'),
-  (10, 5, 10, (SELECT id FROM application_links WHERE job_id = 5), 'reviewed', 'eligible', 'Candidate meets minimum eligibility filters.', 79.00, 1, 'Jason Lee has cloud operations and CI/CD exposure.', '2026-04-02 09:00:00', '2026-04-03 09:00:00'),
-  (11, 6, 11, (SELECT id FROM application_links WHERE job_id = 6), 'shortlisted', 'eligible', 'Candidate meets minimum eligibility filters.', 84.00, 1, 'Mei Ling has strong full stack delivery experience.', '2026-04-02 11:00:00', '2026-04-03 14:00:00'),
-  (12, 8, 12, (SELECT id FROM application_links WHERE job_id = 8), 'new', 'eligible', 'Candidate meets minimum eligibility filters.', 77.00, 1, 'Arjun Kumar has iOS and API integration experience.', '2026-04-06 09:00:00', NULL)
+  (3, 1, 3, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 83.00, 2, 'Bob Martinez is a strong frontend candidate with React, JavaScript, Python and Docker experience.', '2026-03-24 09:00:00', '2026-03-25 11:00:00'),
+  (4, 1, 4, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 76.00, 3, 'Carol Johnson has relevant React, Vue.js, GraphQL and MongoDB experience.', '2026-03-23 09:00:00', '2026-03-24 14:00:00'),
+  (5, 1, 5, (SELECT id FROM application_links WHERE job_id = 1), 'new', 'eligible', 74.00, 4, 'David Kim has React, Angular, Java and PostgreSQL experience.', '2026-03-22 09:00:00', NULL),
+  (6, 1, 6, (SELECT id FROM application_links WHERE job_id = 1), 'filtered_out', 'filtered_out', 55.00, NULL, 'Emma Wilson has frontend skills and can be reviewed through the score breakdown.', '2026-03-21 09:00:00', '2026-03-22 10:00:00'),
+  (7, 2, 7, (SELECT id FROM application_links WHERE job_id = 2), 'shortlisted', 'eligible', 86.00, 1, 'Farah Ahmad shows strong product coordination and stakeholder communication.', '2026-03-25 10:00:00', '2026-03-26 10:00:00'),
+  (8, 2, 8, (SELECT id FROM application_links WHERE job_id = 2), 'reviewed', 'eligible', 78.00, 2, 'Goh Wei Ming has business analysis and agile project exposure.', '2026-03-26 10:00:00', '2026-03-27 11:00:00'),
+  (9, 3, 9, (SELECT id FROM application_links WHERE job_id = 3), 'interview', 'eligible', 85.00, 1, 'Nur Aisyah has strong UX and design research experience.', '2026-03-01 09:00:00', '2026-03-02 09:00:00'),
+  (10, 5, 10, (SELECT id FROM application_links WHERE job_id = 5), 'reviewed', 'eligible', 79.00, 1, 'Jason Lee has cloud operations and CI/CD exposure.', '2026-04-02 09:00:00', '2026-04-03 09:00:00'),
+  (11, 6, 11, (SELECT id FROM application_links WHERE job_id = 6), 'shortlisted', 'eligible', 84.00, 1, 'Mei Ling has strong full stack delivery experience.', '2026-04-02 11:00:00', '2026-04-03 14:00:00'),
+  (12, 8, 12, (SELECT id FROM application_links WHERE job_id = 8), 'new', 'eligible', 77.00, 1, 'Arjun Kumar has iOS and API integration experience.', '2026-04-06 09:00:00', NULL)
 ON DUPLICATE KEY UPDATE
   application_status = VALUES(application_status),
   eligibility_status = VALUES(eligibility_status),
-  eligibility_reason = VALUES(eligibility_reason),
   total_score = VALUES(total_score),
   rank_no = VALUES(rank_no),
   ai_summary = VALUES(ai_summary),
@@ -178,3 +177,4 @@ ON DUPLICATE KEY UPDATE
   match_status = VALUES(match_status),
   evidence_text = VALUES(evidence_text),
   item_score = VALUES(item_score);
+

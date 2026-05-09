@@ -101,24 +101,23 @@ ON DUPLICATE KEY UPDATE
 
 INSERT INTO applications (
   id, job_id, candidate_id, application_link_id, application_status,
-  eligibility_status, eligibility_reason, total_score, rank_no, ai_summary, submitted_at, reviewed_at
+  eligibility_status, total_score, rank_no, ai_summary, submitted_at, reviewed_at
 ) VALUES
-  (100, 1, 100, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 'Candidate meets minimum eligibility filters.', 82.40, 5, 'Liyana Rahman has strong React, TypeScript and dashboard delivery experience.', '2026-04-01 09:00:00', '2026-04-02 10:00:00'),
-  (101, 1, 101, (SELECT id FROM application_links WHERE job_id = 1), 'new', 'eligible', 'Candidate meets minimum eligibility filters.', 80.20, 6, 'Marcus Tan shows practical frontend delivery and testing experience.', '2026-04-02 09:00:00', NULL),
-  (102, 1, 102, (SELECT id FROM application_links WHERE job_id = 1), 'shortlisted', 'eligible', 'Candidate meets minimum eligibility filters.', 87.30, 2, 'Priya Nair has excellent frontend architecture and cloud integration experience.', '2026-04-03 09:00:00', '2026-04-04 11:00:00'),
-  (103, 1, 103, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 'Candidate meets minimum eligibility filters.', 78.60, 7, 'Ong Jun Hao has solid JavaScript, React and API integration experience.', '2026-04-04 09:00:00', '2026-04-05 11:00:00'),
-  (104, 1, 104, (SELECT id FROM application_links WHERE job_id = 1), 'new', 'eligible', 'Candidate meets minimum eligibility filters.', 72.50, 10, 'Nur Iman has junior-to-mid frontend experience and relevant academic background.', '2026-04-05 09:00:00', NULL),
-  (105, 1, 105, (SELECT id FROM application_links WHERE job_id = 1), 'interview', 'eligible', 'Candidate meets minimum eligibility filters.', 85.10, 3, 'Samantha Lim has strong React, UX implementation and component library experience.', '2026-04-06 09:00:00', '2026-04-07 12:00:00'),
-  (106, 1, 106, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 'Candidate meets minimum eligibility filters.', 70.80, 11, 'Kevin Goh has basic frontend experience and can support implementation tasks.', '2026-04-07 09:00:00', '2026-04-08 10:00:00'),
-  (107, 1, 107, (SELECT id FROM application_links WHERE job_id = 1), 'shortlisted', 'eligible', 'Candidate meets minimum eligibility filters.', 84.40, 4, 'Rachel Ong has strong UI engineering, TypeScript and collaboration experience.', '2026-04-08 09:00:00', '2026-04-09 11:00:00'),
-  (108, 1, 108, (SELECT id FROM application_links WHERE job_id = 1), 'filtered_out', 'filtered_out', 'Candidate notice period is above the preferred threshold.', 66.20, NULL, 'Hafiz Ismail has relevant skills but failed one eligibility filter.', '2026-04-09 09:00:00', '2026-04-10 10:00:00'),
-  (109, 1, 109, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 'Candidate meets minimum eligibility filters.', 81.90, 6, 'Chloe Wong has good frontend experience with React and accessibility practices.', '2026-04-10 09:00:00', '2026-04-11 10:00:00'),
-  (110, 1, 110, (SELECT id FROM application_links WHERE job_id = 1), 'new', 'eligible', 'Candidate meets minimum eligibility filters.', 69.40, 12, 'Daniel Wong has developing frontend skills and relevant project experience.', '2026-04-11 09:00:00', NULL),
-  (111, 1, 111, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 'Candidate meets minimum eligibility filters.', 76.80, 8, 'Siti Mariam has React, CSS and basic backend integration experience.', '2026-04-12 09:00:00', '2026-04-13 10:00:00')
+  (100, 1, 100, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 82.40, 5, 'Liyana Rahman has strong React, TypeScript and dashboard delivery experience.', '2026-04-01 09:00:00', '2026-04-02 10:00:00'),
+  (101, 1, 101, (SELECT id FROM application_links WHERE job_id = 1), 'new', 'eligible', 80.20, 6, 'Marcus Tan shows practical frontend delivery and testing experience.', '2026-04-02 09:00:00', NULL),
+  (102, 1, 102, (SELECT id FROM application_links WHERE job_id = 1), 'shortlisted', 'eligible', 87.30, 2, 'Priya Nair has excellent frontend architecture and cloud integration experience.', '2026-04-03 09:00:00', '2026-04-04 11:00:00'),
+  (103, 1, 103, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 78.60, 7, 'Ong Jun Hao has solid JavaScript, React and API integration experience.', '2026-04-04 09:00:00', '2026-04-05 11:00:00'),
+  (104, 1, 104, (SELECT id FROM application_links WHERE job_id = 1), 'new', 'eligible', 72.50, 10, 'Nur Iman has junior-to-mid frontend experience and relevant academic background.', '2026-04-05 09:00:00', NULL),
+  (105, 1, 105, (SELECT id FROM application_links WHERE job_id = 1), 'interview', 'eligible', 85.10, 3, 'Samantha Lim has strong React, UX implementation and component library experience.', '2026-04-06 09:00:00', '2026-04-07 12:00:00'),
+  (106, 1, 106, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 70.80, 11, 'Kevin Goh has basic frontend experience and can support implementation tasks.', '2026-04-07 09:00:00', '2026-04-08 10:00:00'),
+  (107, 1, 107, (SELECT id FROM application_links WHERE job_id = 1), 'shortlisted', 'eligible', 84.40, 4, 'Rachel Ong has strong UI engineering, TypeScript and collaboration experience.', '2026-04-08 09:00:00', '2026-04-09 11:00:00'),
+  (108, 1, 108, (SELECT id FROM application_links WHERE job_id = 1), 'filtered_out', 'filtered_out', 66.20, NULL, 'Hafiz Ismail has relevant skills and can be reviewed through the score breakdown.', '2026-04-09 09:00:00', '2026-04-10 10:00:00'),
+  (109, 1, 109, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 81.90, 6, 'Chloe Wong has good frontend experience with React and accessibility practices.', '2026-04-10 09:00:00', '2026-04-11 10:00:00'),
+  (110, 1, 110, (SELECT id FROM application_links WHERE job_id = 1), 'new', 'eligible', 69.40, 12, 'Daniel Wong has developing frontend skills and relevant project experience.', '2026-04-11 09:00:00', NULL),
+  (111, 1, 111, (SELECT id FROM application_links WHERE job_id = 1), 'reviewed', 'eligible', 76.80, 8, 'Siti Mariam has React, CSS and basic backend integration experience.', '2026-04-12 09:00:00', '2026-04-13 10:00:00')
 ON DUPLICATE KEY UPDATE
   application_status = VALUES(application_status),
   eligibility_status = VALUES(eligibility_status),
-  eligibility_reason = VALUES(eligibility_reason),
   total_score = VALUES(total_score),
   rank_no = VALUES(rank_no),
   ai_summary = VALUES(ai_summary),
@@ -192,3 +191,4 @@ ON DUPLICATE KEY UPDATE
   match_status = VALUES(match_status),
   evidence_text = VALUES(evidence_text),
   item_score = VALUES(item_score);
+
