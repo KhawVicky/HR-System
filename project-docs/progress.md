@@ -74,3 +74,4 @@
 - Removed candidate eligibility explanation from the Candidate UI and dropped `applications.eligibility_reason` from the database.
 - Candidate cards now show experience again using `candidates.years_experience`, separate from eligibility explanation text.
 - Applied Job History now excludes the current application so it only shows other jobs the candidate applied for.
+- Candidate application now uploads the actual PDF resume through multipart form data, stores it under the XAMPP API uploads folder, and saves the public resume URL for the HR Candidate List resume button.

@@ -78,6 +78,16 @@ function input_json(): array
     return is_array($data) ? $data : [];
 }
 
+function input_data(): array
+{
+    $contentType = (string) ($_SERVER["CONTENT_TYPE"] ?? "");
+    if (stripos($contentType, "multipart/form-data") !== false) {
+        return $_POST;
+    }
+
+    return input_json();
+}
+
 function respond(array $data, int $status = 200): void
 {
     http_response_code($status);
@@ -384,7 +394,7 @@ function apply_job(mysqli $db, string $jobCode): void
 
 function submit_application(mysqli $db, string $jobCode): void
 {
-    $data = input_json();
+    $data = input_data();
     $job = row($db, "SELECT id FROM jobs WHERE job_code = ? AND status = 'active'", "s", [$jobCode]);
     if (!$job) {
         respond(["error" => "Job is not open"], 404);
@@ -431,17 +441,87 @@ function submit_application(mysqli $db, string $jobCode): void
     );
 
     $applicationId = $db->insert_id;
+    $resume = save_uploaded_resume($applicationId, (string) ($data["resumeFileName"] ?? "resume.pdf"));
     exec_stmt(
         $db,
         "INSERT INTO resumes (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes, parsing_status)
-         VALUES (?, ?, ?, 'application/pdf', 0, 'pending')",
-        "iss",
-        [$applicationId, (string) ($data["resumeFileName"] ?? "resume.pdf"), "/uploads/resumes/pending.pdf"]
+         VALUES (?, ?, ?, ?, ?, 'pending')",
+        "isssi",
+        [$applicationId, $resume["originalName"], $resume["publicUrl"], $resume["mimeType"], $resume["size"]]
     );
     exec_stmt($db, "INSERT INTO candidate_scores (application_id, total_raw_score, total_weighted_score) VALUES (?, ?, ?)", "idd", [$applicationId, $score, $score]);
     exec_stmt($db, "INSERT INTO candidate_job_history (candidate_id, application_id, job_id, score, rank_no, status) VALUES (?, ?, ?, ?, NULL, ?)", "iiids", [(int) $candidate["id"], $applicationId, (int) $job["id"], $score, $status]);
 
     respond(["ok" => true, "applicationId" => $applicationId], 201);
+}
+
+function save_uploaded_resume(int $applicationId, string $fallbackName): array
+{
+    $fallbackName = basename($fallbackName) ?: "resume.pdf";
+    $legacy = [
+        "originalName" => $fallbackName,
+        "publicUrl" => "/uploads/resumes/pending.pdf",
+        "mimeType" => "application/pdf",
+        "size" => 0,
+    ];
+
+    if (!isset($_FILES["resume"])) {
+        return $legacy;
+    }
+
+    $file = $_FILES["resume"];
+    if (!is_array($file) || (int) $file["error"] !== UPLOAD_ERR_OK) {
+        respond(["error" => "Resume upload failed"], 422);
+    }
+
+    $originalName = basename((string) $file["name"]);
+    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    if ($extension !== "pdf") {
+        respond(["error" => "Resume must be a PDF file"], 422);
+    }
+
+    $size = (int) $file["size"];
+    if ($size <= 0 || $size > 5 * 1024 * 1024) {
+        respond(["error" => "Resume file size must be between 1 byte and 5 MB"], 422);
+    }
+
+    $mimeType = "application/pdf";
+    if (function_exists("finfo_open")) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo) {
+            $detectedType = finfo_file($finfo, (string) $file["tmp_name"]);
+            finfo_close($finfo);
+            if (is_string($detectedType) && $detectedType !== "") {
+                $mimeType = $detectedType;
+            }
+        }
+    }
+
+    if ($mimeType !== "application/pdf") {
+        respond(["error" => "Resume must be a PDF file"], 422);
+    }
+
+    $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . "uploads" . DIRECTORY_SEPARATOR . "resumes";
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true)) {
+        respond(["error" => "Unable to prepare resume upload folder"], 500);
+    }
+
+    $storedName = sprintf("application-%d-%s.pdf", $applicationId, bin2hex(random_bytes(6)));
+    $destination = $uploadDir . DIRECTORY_SEPARATOR . $storedName;
+    if (!move_uploaded_file((string) $file["tmp_name"], $destination)) {
+        respond(["error" => "Unable to save uploaded resume"], 500);
+    }
+
+    $scheme = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off") ? "https" : "http";
+    $host = (string) ($_SERVER["HTTP_HOST"] ?? "localhost");
+    $basePath = rtrim(str_replace("\\", "/", dirname((string) ($_SERVER["SCRIPT_NAME"] ?? "/uwc-hr-api/api.php"))), "/");
+
+    return [
+        "originalName" => $originalName,
+        "publicUrl" => "{$scheme}://{$host}{$basePath}/uploads/resumes/{$storedName}",
+        "mimeType" => $mimeType,
+        "size" => $size,
+    ];
 }
 
 function users(mysqli $db): void

@@ -40,9 +40,10 @@ export async function apiFetch<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const route = path.replace(/^\//, "");
+  const isFormData = options.body instanceof FormData;
   const response = await fetch(`${API_BASE}?route=${encodeURIComponent(route)}`, {
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(options.headers || {}),
     },
     ...options,

@@ -290,16 +290,20 @@ export function ApplyJob() {
     }
 
     try {
+      const applicationData = new FormData();
+      applicationData.append("fullName", formData.fullName);
+      applicationData.append("email", formData.email);
+      applicationData.append("phone", formData.phone);
+      applicationData.append("cgpa", formData.cgpa);
+      applicationData.append(
+        "noticePeriodDays",
+        String(Number(formData.noticePeriod) || 0),
+      );
+      applicationData.append("resume", files[0].file);
+
       await apiFetch(`/apply/${formData.selectedJobId}`, {
         method: "POST",
-        body: JSON.stringify({
-          fullName: formData.fullName,
-          email: formData.email,
-          phone: formData.phone,
-          cgpa: formData.cgpa,
-          noticePeriodDays: Number(formData.noticePeriod) || 0,
-          resumeFileName: files[0]?.file.name || "resume.pdf",
-        }),
+        body: applicationData,
       });
 
       setIsSubmitted(true);
