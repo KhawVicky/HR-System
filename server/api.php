@@ -152,8 +152,9 @@ function login(mysqli $db): void
            u.status,
            u.role_id AS roleId,
            CASE WHEN u.role_id = 2 THEN 'hiring_manager' ELSE 'hr_staff' END AS roleKey,
-           CASE WHEN u.role_id = 2 THEN 'Hiring Manager' ELSE 'HR Staff' END AS roleName
+           r.role_name AS roleName
          FROM users u
+         JOIN roles r ON r.id = u.role_id
          WHERE u.email = ? AND u.status = 'active'
          LIMIT 1",
         "s",
@@ -313,7 +314,17 @@ function job_candidates(mysqli $db, int $jobId): void
                j.department,
                ash.previous_score AS score,
                ash.previous_rank_no AS rank,
-               ash.status_label AS status
+               CONCAT(
+                 ash.submission_no,
+                 CASE
+                   WHEN ash.submission_no % 100 BETWEEN 11 AND 13 THEN 'th'
+                   WHEN ash.submission_no % 10 = 1 THEN 'st'
+                   WHEN ash.submission_no % 10 = 2 THEN 'nd'
+                   WHEN ash.submission_no % 10 = 3 THEN 'rd'
+                   ELSE 'th'
+                 END,
+                 ' Submission'
+               ) AS status
              FROM application_submission_history ash
              JOIN jobs j ON j.id = ash.job_id
              WHERE ash.application_id = ?
@@ -323,11 +334,21 @@ function job_candidates(mysqli $db, int $jobId): void
         );
         $otherJobHistory = rows(
             $db,
-            "SELECT CONCAT('job-', cjh.id) AS historyKey, j.id AS jobId, j.title AS jobTitle, j.department, cjh.score, cjh.rank_no AS rank, cjh.status
-             FROM candidate_job_history cjh
-             JOIN jobs j ON j.id = cjh.job_id
-             WHERE cjh.candidate_id = ? AND cjh.application_id <> ?
-             ORDER BY cjh.recorded_at DESC",
+            "SELECT
+               CONCAT('job-', a.id) AS historyKey,
+               j.id AS jobId,
+               j.title AS jobTitle,
+               j.department,
+               a.total_score AS score,
+               a.rank_no AS rank,
+               CASE
+                 WHEN a.is_shortlisted = 1 AND a.application_status <> 'interview' THEN 'shortlisted'
+                 ELSE a.application_status
+               END AS status
+             FROM applications a
+             JOIN jobs j ON j.id = a.job_id
+             WHERE a.candidate_id = ? AND a.id <> ?
+             ORDER BY a.submitted_at DESC",
             "ii",
             [(int) $candidate["id"], (int) $candidate["applicationId"]]
         );
@@ -389,10 +410,6 @@ function update_application(mysqli $db, int $applicationId): void
     }
 
     $updated = row($db, "SELECT application_status, is_shortlisted, interview_sent_at FROM applications WHERE id = ?", "i", [$applicationId]);
-    $historyStatus = $updated && (int) $updated["is_shortlisted"] === 1 && $updated["application_status"] !== "interview"
-        ? "shortlisted"
-        : $status;
-    exec_stmt($db, "UPDATE candidate_job_history SET status = ? WHERE application_id = ?", "si", [$historyStatus, $applicationId]);
     respond(["ok" => true, "application" => $updated ?: []]);
 }
 
@@ -506,7 +523,6 @@ function submit_application(mysqli $db, string $jobCode): void
         [$applicationId, $resume["originalName"], $resume["publicUrl"], $resume["mimeType"], $resume["size"]]
     );
     exec_stmt($db, "INSERT INTO candidate_scores (application_id, total_raw_score, total_weighted_score) VALUES (?, ?, ?)", "idd", [$applicationId, $score, $score]);
-    exec_stmt($db, "INSERT INTO candidate_job_history (candidate_id, application_id, job_id, score, rank_no, status) VALUES (?, ?, ?, ?, NULL, ?)", "iiids", [(int) $candidate["id"], $applicationId, (int) $job["id"], $score, $status]);
 
     respond(["ok" => true, "applicationId" => $applicationId], 201);
 }
@@ -525,8 +541,11 @@ function replace_existing_application(
     $existing = row(
         $db,
         "SELECT
+           a.application_status,
+           a.eligibility_status,
            a.total_score,
            a.rank_no,
+           a.ai_summary,
            a.submitted_at,
            r.original_file_name AS resumeFileName,
            r.stored_file_path AS resumeUrl
@@ -542,28 +561,30 @@ function replace_existing_application(
 
     $historyCount = row($db, "SELECT COUNT(*) AS total FROM application_submission_history WHERE application_id = ?", "i", [$applicationId]);
     $submissionNo = (int) ($historyCount["total"] ?? 0) + 1;
-    $statusLabel = ordinal_submission_label($submissionNo);
 
     $db->begin_transaction();
     try {
         exec_stmt(
             $db,
             "INSERT INTO application_submission_history (
-               candidate_id, application_id, job_id, submission_no, status_label,
+               candidate_id, application_id, job_id, submission_no,
+               previous_application_status, previous_eligibility_status,
                previous_score, previous_rank_no, previous_resume_file_name,
-               previous_resume_url, original_submitted_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            "iiiisdisss",
+               previous_resume_url, previous_ai_summary, original_submitted_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "iiiissdissss",
             [
                 $candidateId,
                 $applicationId,
                 $jobId,
                 $submissionNo,
-                $statusLabel,
+                (string) $existing["application_status"],
+                (string) $existing["eligibility_status"],
                 $existing["total_score"] === null ? null : (float) $existing["total_score"],
                 $existing["rank_no"] === null ? null : (int) $existing["rank_no"],
                 (string) ($existing["resumeFileName"] ?? ""),
                 (string) ($existing["resumeUrl"] ?? ""),
+                (string) ($existing["ai_summary"] ?? ""),
                 (string) ($existing["submitted_at"] ?? ""),
             ]
         );
@@ -603,14 +624,6 @@ function replace_existing_application(
              ON DUPLICATE KEY UPDATE total_raw_score = VALUES(total_raw_score), total_weighted_score = VALUES(total_weighted_score), evaluated_at = CURRENT_TIMESTAMP",
             "idd",
             [$applicationId, $score, $score]
-        );
-        exec_stmt(
-            $db,
-            "INSERT INTO candidate_job_history (candidate_id, application_id, job_id, score, rank_no, status)
-             VALUES (?, ?, ?, ?, NULL, ?)
-             ON DUPLICATE KEY UPDATE score = VALUES(score), rank_no = NULL, status = VALUES(status), recorded_at = CURRENT_TIMESTAMP",
-            "iiids",
-            [$candidateId, $applicationId, $jobId, $score, $status]
         );
 
         $db->commit();
@@ -722,10 +735,11 @@ function users(mysqli $db): void
                u.status,
                u.role_id AS roleId,
                CASE WHEN u.role_id = 2 THEN 'hiring_manager' ELSE 'hr_staff' END AS roleKey,
-               CASE WHEN u.role_id = 2 THEN 'Hiring Manager' ELSE 'HR Staff' END AS roleName,
+               r.role_name AS roleName,
                u.last_login_at AS lastLoginAt,
                u.created_at AS createdAt
              FROM users u
+             JOIN roles r ON r.id = u.role_id
              ORDER BY u.role_id, u.full_name"
         )
     ]);
@@ -795,10 +809,11 @@ function create_user(mysqli $db): void
            u.status,
            u.role_id AS roleId,
            CASE WHEN u.role_id = 2 THEN 'hiring_manager' ELSE 'hr_staff' END AS roleKey,
-           CASE WHEN u.role_id = 2 THEN 'Hiring Manager' ELSE 'HR Staff' END AS roleName,
+           r.role_name AS roleName,
            u.last_login_at AS lastLoginAt,
            u.created_at AS createdAt
          FROM users u
+         JOIN roles r ON r.id = u.role_id
          WHERE u.id = ?
          LIMIT 1",
         "i",

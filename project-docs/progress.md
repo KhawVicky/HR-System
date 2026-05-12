@@ -76,3 +76,4 @@
 - Applied Job History now excludes the current application so it only shows other jobs the candidate applied for.
 - Candidate application now uploads the actual PDF resume through multipart form data, stores it under the XAMPP API uploads folder, and saves the public resume URL for the HR Candidate List resume button.
 - Candidate duplicate applications now show a confirmation dialog; confirmed resubmissions replace the existing application and archive the previous version as submission history before other job history.
+- Reworked the database to the final 20-table design: restored `roles`, removed `candidate_job_history`, expanded `application_submission_history`, rebuilt XAMPP data from schema plus seed files, and updated the API to derive job history from `applications`.

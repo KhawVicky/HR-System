@@ -21,10 +21,12 @@ Current local status:
 - Database has been created in XAMPP MariaDB.
 - phpMyAdmin can be used to inspect the records.
 - Demo seed data is included for users, jobs, application links, candidates, ranking, and score breakdown.
-- User role is stored directly in `users.role_id`: `1 = HR Staff`, `2 = Hiring Manager`.
+- User roles are defined in `roles`; `users.role_id` references `roles.id`.
+- `candidate_job_history` has been removed. Candidate job history is read directly from `applications`.
 
 ## Core Tables
 
+- `roles`
 - `users`
 - `jobs`
 - `job_responsibilities`
@@ -39,7 +41,7 @@ Current local status:
 - `candidate_scores`
 - `score_breakdowns`
 - `score_breakdown_items`
-- `candidate_job_history`
+- `application_submission_history`
 - `email_templates`
 - `email_logs`
 - `notifications`
@@ -56,6 +58,7 @@ Current local status:
 - One application has one resume record.
 - One application has one candidate score.
 - One candidate score has many score breakdown records.
+- Duplicate submissions for the same job archive previous application/resume state in `application_submission_history`.
 - One application can have email logs for interview or reject actions.
 
 ## Scoring Notes
@@ -67,6 +70,7 @@ Current local status:
 
 ## Verified Tables
 
+- `roles`
 - `users`
 - `jobs`
 - `job_responsibilities`
@@ -81,7 +85,7 @@ Current local status:
 - `candidate_scores`
 - `score_breakdowns`
 - `score_breakdown_items`
-- `candidate_job_history`
+- `application_submission_history`
 - `email_templates`
 - `email_logs`
 - `notifications`

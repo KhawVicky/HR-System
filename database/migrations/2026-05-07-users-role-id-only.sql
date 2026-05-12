@@ -1,17 +1,15 @@
 USE uwc_hr_decision_support;
 
-UPDATE users u
-JOIN roles r ON r.id = u.role_id
-SET u.role_id = CASE
-  WHEN r.role_key = 'hiring_manager' THEN 2
-  ELSE 1
-END;
+CREATE TABLE IF NOT EXISTS roles (
+  id TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  role_name VARCHAR(80) NOT NULL UNIQUE,
+  description VARCHAR(255) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
 
-DELETE FROM users
-WHERE email = 'admin@uwc.com.my';
-
-ALTER TABLE users DROP FOREIGN KEY fk_users_role;
-ALTER TABLE users MODIFY role_id TINYINT UNSIGNED NOT NULL COMMENT '1 = HR Staff, 2 = Hiring Manager';
-ALTER TABLE users ADD CONSTRAINT chk_users_role_id CHECK (role_id IN (1, 2));
-
-DROP TABLE roles;
+INSERT INTO roles (id, role_name, description) VALUES
+  (1, 'HR Staff', 'Can create jobs, manage applications, shortlist candidates, and send interview or reject decisions.'),
+  (2, 'Hiring Manager', 'Can review shortlisted candidates, view scoring details, and manage internal users.')
+ON DUPLICATE KEY UPDATE
+  role_name = VALUES(role_name),
+  description = VALUES(description);

@@ -40,7 +40,8 @@ uwc_hr_decision_support
 
 The schema includes demo records for:
 
-- Users: HR staff and hiring manager. Role is stored directly in `users.role_id` where `1 = HR Staff` and `2 = Hiring Manager`.
+- Roles: `1 = HR Staff`, `2 = Hiring Manager`
+- Users: HR staff and hiring manager. `users.role_id` references `roles.id`.
 - Job: `JOB001` Senior Frontend Developer
 - Application link: `/apply/JOB001`
 - Candidates: Alice Chen and Daniel Tan
@@ -50,7 +51,10 @@ Additional seed data:
 
 ```powershell
 Get-Content -LiteralPath database\seed-demo.sql | C:\xampp\mysql\bin\mysql.exe -u root
+Get-Content -LiteralPath database\seed-more.sql | C:\xampp\mysql\bin\mysql.exe -u root
 ```
+
+The final schema has 20 tables and does not use `candidate_job_history`. Candidate job history is derived from `applications`; duplicate resubmission history is stored in `application_submission_history`.
 
 ## Local API
 

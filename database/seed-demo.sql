@@ -131,14 +131,6 @@ ON DUPLICATE KEY UPDATE
   total_raw_score = VALUES(total_raw_score),
   total_weighted_score = VALUES(total_weighted_score);
 
-INSERT INTO candidate_job_history (candidate_id, application_id, job_id, score, rank_no, status)
-SELECT candidate_id, id, job_id, total_score, rank_no, application_status
-FROM applications
-ON DUPLICATE KEY UPDATE
-  score = VALUES(score),
-  rank_no = VALUES(rank_no),
-  status = VALUES(status);
-
 INSERT INTO score_breakdowns (candidate_score_id, criteria_id, raw_score, weight, weighted_score, explanation)
 SELECT cs.id, jc.id,
   CASE jc.sort_order

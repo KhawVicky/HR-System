@@ -4,9 +4,16 @@ CREATE DATABASE IF NOT EXISTS uwc_hr_decision_support
 
 USE uwc_hr_decision_support;
 
+CREATE TABLE IF NOT EXISTS roles (
+  id TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  role_name VARCHAR(80) NOT NULL UNIQUE,
+  description VARCHAR(255) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS users (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  role_id TINYINT UNSIGNED NOT NULL COMMENT '1 = HR Staff, 2 = Hiring Manager',
+  role_id TINYINT UNSIGNED NOT NULL,
   full_name VARCHAR(150) NOT NULL,
   email VARCHAR(180) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
@@ -16,7 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT chk_users_role_id CHECK (role_id IN (1, 2))
+  CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS jobs (
@@ -197,32 +204,19 @@ CREATE TABLE IF NOT EXISTS score_breakdown_items (
   UNIQUE KEY uq_score_breakdown_items_requirement (score_breakdown_id, requirement_text)
 ) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS candidate_job_history (
-  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  candidate_id INT UNSIGNED NOT NULL,
-  application_id INT UNSIGNED NOT NULL,
-  job_id INT UNSIGNED NOT NULL,
-  score DECIMAL(5,2) NULL,
-  rank_no INT UNSIGNED NULL,
-  status VARCHAR(50) NOT NULL,
-  recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_candidate_job_history_candidate FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
-  CONSTRAINT fk_candidate_job_history_application FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE,
-  CONSTRAINT fk_candidate_job_history_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_candidate_job_history_application (application_id)
-) ENGINE=InnoDB;
-
 CREATE TABLE IF NOT EXISTS application_submission_history (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   candidate_id INT UNSIGNED NOT NULL,
   application_id INT UNSIGNED NOT NULL,
   job_id INT UNSIGNED NOT NULL,
   submission_no INT UNSIGNED NOT NULL,
-  status_label VARCHAR(80) NOT NULL,
+  previous_application_status ENUM('new', 'reviewed', 'shortlisted', 'interview', 'rejected', 'filtered_out') NOT NULL,
+  previous_eligibility_status ENUM('eligible', 'filtered_out', 'pending') NOT NULL,
   previous_score DECIMAL(5,2) NULL,
   previous_rank_no INT UNSIGNED NULL,
   previous_resume_file_name VARCHAR(255) NULL,
   previous_resume_url VARCHAR(500) NULL,
+  previous_ai_summary TEXT NULL,
   original_submitted_at DATETIME NULL,
   recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_submission_history_candidate FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
@@ -285,6 +279,13 @@ CREATE TABLE IF NOT EXISTS attendance_records (
   CONSTRAINT fk_attendance_records_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   UNIQUE KEY uq_attendance_user_date (user_id, attendance_date)
 ) ENGINE=InnoDB;
+
+INSERT INTO roles (id, role_name, description) VALUES
+  (1, 'HR Staff', 'Can create jobs, manage applications, shortlist candidates, and send interview or reject decisions.'),
+  (2, 'Hiring Manager', 'Can review shortlisted candidates, view scoring details, and manage internal users.')
+ON DUPLICATE KEY UPDATE
+  role_name = VALUES(role_name),
+  description = VALUES(description);
 
 INSERT INTO users (id, role_id, full_name, email, password_hash, department, phone, status) VALUES
   (2, 1, 'HR Staff Demo', 'hr@uwc.com.my', '$2y$10$demo.hash.for.prototype.only', 'Human Resources', '+604-0000001', 'active'),
@@ -461,14 +462,6 @@ ON DUPLICATE KEY UPDATE
   match_status = VALUES(match_status),
   evidence_text = VALUES(evidence_text),
   item_score = VALUES(item_score);
-
-INSERT INTO candidate_job_history (candidate_id, application_id, job_id, score, rank_no, status) VALUES
-  (1, 1, 1, 88.50, 1, 'shortlisted'),
-  (2, 2, 1, 67.00, NULL, 'filtered_out')
-ON DUPLICATE KEY UPDATE
-  score = VALUES(score),
-  rank_no = VALUES(rank_no),
-  status = VALUES(status);
 
 INSERT INTO email_templates (template_key, template_name, subject, body, created_by_user_id) VALUES
   (
