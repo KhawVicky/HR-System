@@ -75,3 +75,4 @@
 - Candidate cards now show experience again using `candidates.years_experience`, separate from eligibility explanation text.
 - Applied Job History now excludes the current application so it only shows other jobs the candidate applied for.
 - Candidate application now uploads the actual PDF resume through multipart form data, stores it under the XAMPP API uploads folder, and saves the public resume URL for the HR Candidate List resume button.
+- Candidate duplicate applications now show a confirmation dialog; confirmed resubmissions replace the existing application and archive the previous version as submission history before other job history.

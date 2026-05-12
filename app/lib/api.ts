@@ -1,5 +1,17 @@
 const API_BASE = "http://localhost/uwc-hr-api/api.php";
 
+export class ApiError extends Error {
+  status: number;
+  data: Record<string, unknown>;
+
+  constructor(message: string, status: number, data: Record<string, unknown>) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
 export type UserRole = "hr_staff" | "hiring_manager";
 
 export interface AuthUser {
@@ -52,7 +64,11 @@ export async function apiFetch<T>(
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.error || "API request failed");
+    throw new ApiError(
+      data.error || "API request failed",
+      response.status,
+      data,
+    );
   }
 
   return data as T;

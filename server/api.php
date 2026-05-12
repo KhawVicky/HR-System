@@ -273,7 +273,12 @@ function job_candidates(mysqli $db, int $jobId): void
           a.total_score AS score,
           a.ai_summary AS summary,
           r.stored_file_path AS resumeUrl,
-          r.original_file_name AS resumeFileName
+          r.original_file_name AS resumeFileName,
+          (
+            SELECT COUNT(*) + 1
+            FROM application_submission_history ash
+            WHERE ash.application_id = a.id
+          ) AS currentSubmissionNo
         FROM applications a
         JOIN candidates c ON c.id = a.candidate_id
         LEFT JOIN resumes r ON r.application_id = a.id
@@ -297,10 +302,28 @@ function job_candidates(mysqli $db, int $jobId): void
             "i",
             [(int) $candidate["applicationId"]]
         );
+        $candidate["currentSubmissionLabel"] = ordinal_submission_label((int) $candidate["currentSubmissionNo"]);
         $candidate["scoreBreakdown"] = candidate_breakdown($db, (int) $candidate["applicationId"]);
-        $candidate["jobHistory"] = rows(
+        $submissionHistory = rows(
             $db,
-            "SELECT j.id AS jobId, j.title AS jobTitle, j.department, cjh.score, cjh.rank_no AS rank, cjh.status
+            "SELECT
+               CONCAT('submission-', ash.id) AS historyKey,
+               ash.job_id AS jobId,
+               j.title AS jobTitle,
+               j.department,
+               ash.previous_score AS score,
+               ash.previous_rank_no AS rank,
+               ash.status_label AS status
+             FROM application_submission_history ash
+             JOIN jobs j ON j.id = ash.job_id
+             WHERE ash.application_id = ?
+             ORDER BY ash.submission_no DESC, ash.recorded_at DESC",
+            "i",
+            [(int) $candidate["applicationId"]]
+        );
+        $otherJobHistory = rows(
+            $db,
+            "SELECT CONCAT('job-', cjh.id) AS historyKey, j.id AS jobId, j.title AS jobTitle, j.department, cjh.score, cjh.rank_no AS rank, cjh.status
              FROM candidate_job_history cjh
              JOIN jobs j ON j.id = cjh.job_id
              WHERE cjh.candidate_id = ? AND cjh.application_id <> ?
@@ -308,6 +331,7 @@ function job_candidates(mysqli $db, int $jobId): void
             "ii",
             [(int) $candidate["id"], (int) $candidate["applicationId"]]
         );
+        $candidate["jobHistory"] = array_merge($submissionHistory, $otherJobHistory);
     }
 
     respond(["job" => $job, "candidates" => $candidates]);
@@ -410,6 +434,49 @@ function submit_application(mysqli $db, string $jobCode): void
         respond(["error" => "Full name, email, and phone are required"], 422);
     }
 
+    $candidate = row($db, "SELECT id FROM candidates WHERE email = ?", "s", [$email]);
+    $existing = $candidate
+        ? row($db, "SELECT id FROM applications WHERE job_id = ? AND candidate_id = ?", "ii", [(int) $job["id"], (int) $candidate["id"]])
+        : null;
+
+    $eligibility = row($db, "SELECT min_cgpa AS minCgpa, max_notice_period_days AS maxNoticePeriodDays FROM eligibility_filters WHERE job_id = ?", "i", [(int) $job["id"]]);
+    $eligible = (!$eligibility || ($cgpa >= (float) $eligibility["minCgpa"] && ($noticePeriodDays === 0 || $noticePeriodDays <= (int) $eligibility["maxNoticePeriodDays"])));
+    $status = $eligible ? "new" : "filtered_out";
+    $eligibilityStatus = $eligible ? "eligible" : "filtered_out";
+    $score = $eligible ? 72.00 : 55.00;
+
+    if ($existing) {
+        $replaceExisting = filter_var($data["replaceExisting"] ?? false, FILTER_VALIDATE_BOOLEAN);
+        if (!$replaceExisting) {
+            respond([
+                "error" => "This email has already applied for this job.",
+                "duplicate" => true,
+                "applicationId" => (int) $existing["id"],
+            ], 409);
+        }
+
+        exec_stmt(
+            $db,
+            "INSERT INTO candidates (full_name, email, phone, current_cgpa, years_experience, notice_period_days)
+             VALUES (?, ?, ?, ?, NULL, ?)
+             ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), phone = VALUES(phone), current_cgpa = VALUES(current_cgpa), notice_period_days = VALUES(notice_period_days)",
+            "sssdi",
+            [$fullName, $email, $phone, $cgpa, $noticePeriodDays]
+        );
+
+        replace_existing_application(
+            $db,
+            (int) $existing["id"],
+            (int) $candidate["id"],
+            (int) $job["id"],
+            $status,
+            $eligibilityStatus,
+            $score,
+            $fullName,
+            (string) ($data["resumeFileName"] ?? "resume.pdf")
+        );
+    }
+
     exec_stmt(
         $db,
         "INSERT INTO candidates (full_name, email, phone, current_cgpa, years_experience, notice_period_days)
@@ -420,17 +487,6 @@ function submit_application(mysqli $db, string $jobCode): void
     );
 
     $candidate = row($db, "SELECT id FROM candidates WHERE email = ?", "s", [$email]);
-    $existing = row($db, "SELECT id FROM applications WHERE job_id = ? AND candidate_id = ?", "ii", [(int) $job["id"], (int) $candidate["id"]]);
-
-    if ($existing) {
-        respond(["error" => "This email has already applied for this job."], 409);
-    }
-
-    $eligibility = row($db, "SELECT min_cgpa AS minCgpa, max_notice_period_days AS maxNoticePeriodDays FROM eligibility_filters WHERE job_id = ?", "i", [(int) $job["id"]]);
-    $eligible = (!$eligibility || ($cgpa >= (float) $eligibility["minCgpa"] && ($noticePeriodDays === 0 || $noticePeriodDays <= (int) $eligibility["maxNoticePeriodDays"])));
-    $status = $eligible ? "new" : "filtered_out";
-    $eligibilityStatus = $eligible ? "eligible" : "filtered_out";
-    $score = $eligible ? 72.00 : 55.00;
 
     exec_stmt(
         $db,
@@ -453,6 +509,134 @@ function submit_application(mysqli $db, string $jobCode): void
     exec_stmt($db, "INSERT INTO candidate_job_history (candidate_id, application_id, job_id, score, rank_no, status) VALUES (?, ?, ?, ?, NULL, ?)", "iiids", [(int) $candidate["id"], $applicationId, (int) $job["id"], $score, $status]);
 
     respond(["ok" => true, "applicationId" => $applicationId], 201);
+}
+
+function replace_existing_application(
+    mysqli $db,
+    int $applicationId,
+    int $candidateId,
+    int $jobId,
+    string $status,
+    string $eligibilityStatus,
+    float $score,
+    string $fullName,
+    string $fallbackResumeName
+): void {
+    $existing = row(
+        $db,
+        "SELECT
+           a.total_score,
+           a.rank_no,
+           a.submitted_at,
+           r.original_file_name AS resumeFileName,
+           r.stored_file_path AS resumeUrl
+         FROM applications a
+         LEFT JOIN resumes r ON r.application_id = a.id
+         WHERE a.id = ?",
+        "i",
+        [$applicationId]
+    );
+    if (!$existing) {
+        respond(["error" => "Existing application not found"], 404);
+    }
+
+    $historyCount = row($db, "SELECT COUNT(*) AS total FROM application_submission_history WHERE application_id = ?", "i", [$applicationId]);
+    $submissionNo = (int) ($historyCount["total"] ?? 0) + 1;
+    $statusLabel = ordinal_submission_label($submissionNo);
+
+    $db->begin_transaction();
+    try {
+        exec_stmt(
+            $db,
+            "INSERT INTO application_submission_history (
+               candidate_id, application_id, job_id, submission_no, status_label,
+               previous_score, previous_rank_no, previous_resume_file_name,
+               previous_resume_url, original_submitted_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "iiiisdisss",
+            [
+                $candidateId,
+                $applicationId,
+                $jobId,
+                $submissionNo,
+                $statusLabel,
+                $existing["total_score"] === null ? null : (float) $existing["total_score"],
+                $existing["rank_no"] === null ? null : (int) $existing["rank_no"],
+                (string) ($existing["resumeFileName"] ?? ""),
+                (string) ($existing["resumeUrl"] ?? ""),
+                (string) ($existing["submitted_at"] ?? ""),
+            ]
+        );
+
+        exec_stmt(
+            $db,
+            "UPDATE applications
+             SET application_status = ?, is_shortlisted = 0, interview_sent_at = NULL,
+                 eligibility_status = ?, total_score = ?, rank_no = NULL,
+                 ai_summary = ?, submitted_at = NOW(), reviewed_at = NULL
+             WHERE id = ?",
+            "ssdsi",
+            [$status, $eligibilityStatus, $score, "$fullName resubmitted an application and is ready for HR review.", $applicationId]
+        );
+
+        $resume = save_uploaded_resume($applicationId, $fallbackResumeName);
+        exec_stmt(
+            $db,
+            "INSERT INTO resumes (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes, parsing_status)
+             VALUES (?, ?, ?, ?, ?, 'pending')
+             ON DUPLICATE KEY UPDATE
+               original_file_name = VALUES(original_file_name),
+               stored_file_path = VALUES(stored_file_path),
+               file_mime_type = VALUES(file_mime_type),
+               file_size_bytes = VALUES(file_size_bytes),
+               parsed_text = NULL,
+               parsing_status = 'pending',
+               uploaded_at = CURRENT_TIMESTAMP",
+            "isssi",
+            [$applicationId, $resume["originalName"], $resume["publicUrl"], $resume["mimeType"], $resume["size"]]
+        );
+
+        exec_stmt(
+            $db,
+            "INSERT INTO candidate_scores (application_id, total_raw_score, total_weighted_score)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE total_raw_score = VALUES(total_raw_score), total_weighted_score = VALUES(total_weighted_score), evaluated_at = CURRENT_TIMESTAMP",
+            "idd",
+            [$applicationId, $score, $score]
+        );
+        exec_stmt(
+            $db,
+            "INSERT INTO candidate_job_history (candidate_id, application_id, job_id, score, rank_no, status)
+             VALUES (?, ?, ?, ?, NULL, ?)
+             ON DUPLICATE KEY UPDATE score = VALUES(score), rank_no = NULL, status = VALUES(status), recorded_at = CURRENT_TIMESTAMP",
+            "iiids",
+            [$candidateId, $applicationId, $jobId, $score, $status]
+        );
+
+        $db->commit();
+    } catch (Throwable $error) {
+        $db->rollback();
+        throw $error;
+    }
+
+    respond(["ok" => true, "applicationId" => $applicationId, "replaced" => true], 200);
+}
+
+function ordinal_submission_label(int $submissionNo): string
+{
+    $suffix = "th";
+    if ($submissionNo % 100 < 11 || $submissionNo % 100 > 13) {
+        $lastDigit = $submissionNo % 10;
+        if ($lastDigit === 1) {
+            $suffix = "st";
+        } elseif ($lastDigit === 2) {
+            $suffix = "nd";
+        } elseif ($lastDigit === 3) {
+            $suffix = "rd";
+        }
+    }
+
+    return $submissionNo . $suffix . " Submission";
 }
 
 function save_uploaded_resume(int $applicationId, string $fallbackName): array

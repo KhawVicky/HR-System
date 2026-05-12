@@ -10,6 +10,16 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { toast } from "sonner";
 import {
   Upload,
@@ -22,7 +32,7 @@ import {
   Eye,
   DollarSign,
 } from "lucide-react";
-import { apiFetch, type JobSummary } from "../lib/api";
+import { ApiError, apiFetch, type JobSummary } from "../lib/api";
 
 type JobItem = {
   id: string;
@@ -84,6 +94,8 @@ export function ApplyJob() {
     {},
   );
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [isReplacingApplication, setIsReplacingApplication] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -281,6 +293,58 @@ export function ApplyJob() {
     );
   };
 
+  const buildApplicationData = (replaceExisting: boolean) => {
+    const applicationData = new FormData();
+    applicationData.append("fullName", formData.fullName);
+    applicationData.append("email", formData.email);
+    applicationData.append("phone", formData.phone);
+    applicationData.append("cgpa", formData.cgpa);
+    applicationData.append(
+      "noticePeriodDays",
+      String(Number(formData.noticePeriod) || 0),
+    );
+    applicationData.append("resume", files[0].file);
+
+    if (replaceExisting) {
+      applicationData.append("replaceExisting", "1");
+    }
+
+    return applicationData;
+  };
+
+  const submitApplication = async (replaceExisting = false) => {
+    try {
+      await apiFetch(`/apply/${formData.selectedJobId}`, {
+        method: "POST",
+        body: buildApplicationData(replaceExisting),
+      });
+
+      setIsSubmitted(true);
+      setDuplicateDialogOpen(false);
+
+      toast.success("Application submitted successfully!", {
+        description:
+          "We'll review your application and get back to you soon.",
+        duration: 5000,
+      });
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 409 &&
+        error.data.duplicate
+      ) {
+        setDuplicateDialogOpen(true);
+        return;
+      }
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to submit application",
+      );
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -289,36 +353,15 @@ export function ApplyJob() {
       return;
     }
 
+    await submitApplication(false);
+  };
+
+  const handleReplaceApplication = async () => {
+    setIsReplacingApplication(true);
     try {
-      const applicationData = new FormData();
-      applicationData.append("fullName", formData.fullName);
-      applicationData.append("email", formData.email);
-      applicationData.append("phone", formData.phone);
-      applicationData.append("cgpa", formData.cgpa);
-      applicationData.append(
-        "noticePeriodDays",
-        String(Number(formData.noticePeriod) || 0),
-      );
-      applicationData.append("resume", files[0].file);
-
-      await apiFetch(`/apply/${formData.selectedJobId}`, {
-        method: "POST",
-        body: applicationData,
-      });
-
-      setIsSubmitted(true);
-
-      toast.success("Application submitted successfully!", {
-        description:
-          "We'll review your application and get back to you soon.",
-        duration: 5000,
-      });
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to submit application",
-      );
+      await submitApplication(true);
+    } finally {
+      setIsReplacingApplication(false);
     }
   };
 
@@ -826,6 +869,40 @@ export function ApplyJob() {
           </CardContent>
         </Card>
       </main>
+
+      <AlertDialog
+        open={duplicateDialogOpen}
+        onOpenChange={setDuplicateDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Replace existing application?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This email has already submitted an application for this
+              job. If you continue, the latest form and resume will
+              replace the existing application, and the previous
+              submission will be kept in history.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isReplacingApplication}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleReplaceApplication();
+              }}
+              disabled={isReplacingApplication}
+              className="bg-[#003B7A] hover:bg-[#002f63]"
+            >
+              {isReplacingApplication ? "Replacing..." : "Replace"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <CandidateFooter />
     </div>

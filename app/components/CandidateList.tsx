@@ -81,6 +81,8 @@ interface Candidate {
   status: CandidateStatus;
   isShortlisted: boolean;
   interviewSentAt?: string | null;
+  currentSubmissionNo: number;
+  currentSubmissionLabel: string;
   experience: string;
   education: string;
   cgpa?: string;
@@ -91,12 +93,13 @@ interface Candidate {
   scoreBreakdown: ScoreBreakdownItem[];
   score?: number;
   appliedJobHistory?: {
+  historyKey: string;
   jobId: string;
   jobTitle: string;
   department: string;
   score: number;
   rank: number | null;
-  status: CandidateStatus;
+  status: string;
 }[];
 }
 
@@ -190,6 +193,8 @@ type ApiCandidate = {
   status: CandidateStatus;
   isShortlisted: boolean | number | string;
   interviewSentAt: string | null;
+  currentSubmissionNo: string | number;
+  currentSubmissionLabel: string;
   eligibilityStatus: string;
   score: string | number | null;
   summary: string | null;
@@ -204,12 +209,13 @@ type ApiCandidate = {
     weightedScore: string | number;
   }[];
   jobHistory: {
+    historyKey: string;
     jobId: number;
     jobTitle: string;
     department: string;
     score: string | number;
     rank: string | number | null;
-    status: CandidateStatus;
+    status: string;
   }[];
 };
 
@@ -221,6 +227,7 @@ const scoreColors = [
 ];
 
 const CANDIDATES_PER_PAGE = 15;
+const JOB_HISTORY_PER_PAGE = 5;
 
 const formatDateOnly = (value: string) => value.slice(0, 10);
 
@@ -247,6 +254,9 @@ const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
       ...scoreColors[index % scoreColors.length],
     })),
   );
+  const displayScore = scoreBreakdown.length
+    ? calculateTotalScore(scoreBreakdown)
+    : Number(candidate.score ?? 0);
 
   return {
     id: String(candidate.id),
@@ -266,6 +276,9 @@ const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
     interviewSentAt:
       candidate.interviewSentAt ||
       (candidate.status === "interview" ? candidate.appliedDate : null),
+    currentSubmissionNo: Number(candidate.currentSubmissionNo ?? 1),
+    currentSubmissionLabel:
+      candidate.currentSubmissionLabel || "1st Submission",
     experience: formatExperience(candidate.yearsExperience),
     education: "",
     cgpa: candidate.cgpa === null ? "-" : String(candidate.cgpa),
@@ -276,8 +289,9 @@ const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
     resumeUrl: candidate.resumeUrl || "#",
     summary: candidate.summary || "This candidate has been evaluated by the system and is ready for HR review.",
     scoreBreakdown,
-    score: Number(candidate.score ?? calculateTotalScore(scoreBreakdown)),
+    score: displayScore,
     appliedJobHistory: (candidate.jobHistory ?? []).map((history) => ({
+      historyKey: history.historyKey,
       jobId: String(history.jobId),
       jobTitle: history.jobTitle,
       department: history.department,
@@ -299,7 +313,15 @@ const recalculateRanks = (candidateList: Candidate[]) => {
     .filter((candidate) =>
       rankableStatuses.includes(candidate.status),
     )
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    .sort((a, b) => {
+      const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
+      if (scoreDiff !== 0) return scoreDiff;
+
+      return (
+        new Date(b.appliedDate).getTime() -
+        new Date(a.appliedDate).getTime()
+      );
+    });
 
   return candidateList.map((candidate) => {
     if (!rankableStatuses.includes(candidate.status)) {
@@ -311,7 +333,9 @@ const recalculateRanks = (candidateList: Candidate[]) => {
 
     const newRank =
       sortedRankable.findIndex(
-        (item) => item.id === candidate.id,
+        (item) =>
+          (item.applicationId || item.id) ===
+          (candidate.applicationId || candidate.id),
       ) + 1;
 
     return {
@@ -332,6 +356,9 @@ export function CandidateList() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [sortBy, setSortBy] = useState("rank");
   const [currentPage, setCurrentPage] = useState(1);
+  const [jobHistoryPages, setJobHistoryPages] = useState<
+    Record<string, number>
+  >({});
 
   const [expandedCandidate, setExpandedCandidate] = useState<
     string | null
@@ -448,6 +475,8 @@ export function CandidateList() {
       status: "new",
       isShortlisted: false,
       interviewSentAt: null,
+      currentSubmissionNo: 1,
+      currentSubmissionLabel: "1st Submission",
       experience: "Pending analysis",
       education: "Pending analysis",
       cgpa: "-",
@@ -528,7 +557,7 @@ export function CandidateList() {
     setCurrentPage(1);
   }, [searchQuery, filterStatus, sortBy, jobId]);
 
-  const getStatusColor = (status: CandidateStatus) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case "interview":
         return "bg-blue-600";
@@ -547,12 +576,12 @@ export function CandidateList() {
     }
   };
 
-  const getStatusLabel = (status: CandidateStatus) => {
+  const getStatusLabel = (status: string) => {
     switch (status) {
       case "filtered_out":
         return "FILTERED OUT";
       default:
-        return status.toUpperCase();
+        return status.replace(/_/g, " ").toUpperCase();
     }
   };
 
@@ -627,6 +656,12 @@ export function CandidateList() {
     setExpandedCandidate((prev) =>
       prev === candidate.id ? null : candidate.id,
     );
+    if (isOpening) {
+      setJobHistoryPages((prev) => ({
+        ...prev,
+        [candidate.applicationId || candidate.id]: 1,
+      }));
+    }
 
     if (isOpening && candidate.status === "new") {
       updateCandidateStatus(candidate.id, "reviewed");
@@ -846,11 +881,11 @@ export function CandidateList() {
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="score">
-                    Highest Score
-                  </SelectItem>
                   <SelectItem value="rank">
                     Best Rank
+                  </SelectItem>
+                  <SelectItem value="score">
+                    Highest Score
                   </SelectItem>
                   <SelectItem value="date">
                     Most Recent
@@ -939,6 +974,21 @@ export function CandidateList() {
           const hasInterviewSent = Boolean(
             candidate.interviewSentAt,
           );
+          const jobHistory = candidate.appliedJobHistory ?? [];
+          const jobHistoryPageKey =
+            candidate.applicationId || candidate.id;
+          const jobHistoryPageCount = Math.max(
+            1,
+            Math.ceil(jobHistory.length / JOB_HISTORY_PER_PAGE),
+          );
+          const jobHistoryPage = Math.min(
+            jobHistoryPages[jobHistoryPageKey] ?? 1,
+            jobHistoryPageCount,
+          );
+          const pagedJobHistory = jobHistory.slice(
+            (jobHistoryPage - 1) * JOB_HISTORY_PER_PAGE,
+            jobHistoryPage * JOB_HISTORY_PER_PAGE,
+          );
 
           return (
             <Card
@@ -1016,6 +1066,13 @@ export function CandidateList() {
                                 INTERVIEW
                               </Badge>
                             )}
+                          {candidate.currentSubmissionNo > 1 && (
+                            <Badge className="bg-slate-600">
+                              {getStatusLabel(
+                                candidate.currentSubmissionLabel,
+                              )}
+                            </Badge>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm text-slate-600">
@@ -1212,8 +1269,7 @@ export function CandidateList() {
                           )}
                         </div>
                       </div>
-                      {candidate.appliedJobHistory &&
-  candidate.appliedJobHistory.length > 0 && (
+                      {jobHistory.length > 0 && (
     <div>
       <div className="font-medium mb-2 text-[22px] text-[#0f172b]">
         Applied Job History
@@ -1227,9 +1283,9 @@ export function CandidateList() {
           <div>Status</div>
         </div>
 
-        {candidate.appliedJobHistory.map((job) => (
+        {pagedJobHistory.map((job) => (
           <div
-            key={`${candidate.id}-${job.jobId}`}
+            key={`${candidate.id}-${job.historyKey}`}
             className="grid grid-cols-5 items-center border-t border-slate-200 px-5 py-4 text-sm"
           >
             <div className="col-span-2">
@@ -1260,6 +1316,75 @@ export function CandidateList() {
           </div>
         ))}
       </div>
+      {jobHistory.length > JOB_HISTORY_PER_PAGE && (
+        <Pagination className="mt-4">
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                href="#"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setJobHistoryPages((prev) => ({
+                    ...prev,
+                    [jobHistoryPageKey]: Math.max(
+                      1,
+                      jobHistoryPage - 1,
+                    ),
+                  }));
+                }}
+                className={
+                  jobHistoryPage === 1
+                    ? "pointer-events-none opacity-50"
+                    : ""
+                }
+              />
+            </PaginationItem>
+            {Array.from({ length: jobHistoryPageCount }).map(
+              (_, index) => {
+                const page = index + 1;
+
+                return (
+                  <PaginationItem key={page}>
+                    <PaginationLink
+                      href="#"
+                      isActive={jobHistoryPage === page}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setJobHistoryPages((prev) => ({
+                          ...prev,
+                          [jobHistoryPageKey]: page,
+                        }));
+                      }}
+                    >
+                      {page}
+                    </PaginationLink>
+                  </PaginationItem>
+                );
+              },
+            )}
+            <PaginationItem>
+              <PaginationNext
+                href="#"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setJobHistoryPages((prev) => ({
+                    ...prev,
+                    [jobHistoryPageKey]: Math.min(
+                      jobHistoryPageCount,
+                      jobHistoryPage + 1,
+                    ),
+                  }));
+                }}
+                className={
+                  jobHistoryPage === jobHistoryPageCount
+                    ? "pointer-events-none opacity-50"
+                    : ""
+                }
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
     </div>
   )}
                     </div>
