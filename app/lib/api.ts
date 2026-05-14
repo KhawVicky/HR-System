@@ -47,13 +47,32 @@ export interface JobSummary {
   pendingCount: number;
 }
 
+export interface NotificationItem {
+  id: number;
+  applicationId?: number | null;
+  jobId?: number | null;
+  notificationType: string;
+  title: string;
+  message: string;
+  isRead: 0 | 1 | boolean;
+  createdAt: string;
+}
+
+export interface NotificationResponse {
+  items: NotificationItem[];
+  preview: NotificationItem[];
+  unreadCount: number;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const route = path.replace(/^\//, "");
+  const [routePath, queryString] = path.replace(/^\//, "").split("?");
+  const route = routePath;
+  const query = queryString ? `&${queryString}` : "";
   const isFormData = options.body instanceof FormData;
-  const response = await fetch(`${API_BASE}?route=${encodeURIComponent(route)}`, {
+  const response = await fetch(`${API_BASE}?route=${encodeURIComponent(route)}${query}`, {
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(options.headers || {}),

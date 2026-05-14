@@ -9,6 +9,7 @@ import { ApplyJob } from "./components/ApplyJob";
 import { AttendanceAnalytics } from "./components/AttendanceAnalytics";
 import { Reports } from "./components/Reports";
 import { UserProfile } from "./components/UserProfile";
+import { NotificationsPage } from "./components/NotificationsPage";
 import { UserManagementPage } from "./components/admin";
 import { HREfficiencyDashboard } from "./components/HREfficiencyDashboard";
 import { DepartmentJobs } from "./components/DepartmentJobs";
@@ -138,6 +139,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <UserProfile />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "notifications",
+        element: (
+          <ProtectedRoute>
+            <NotificationsPage />
           </ProtectedRoute>
         ),
       },

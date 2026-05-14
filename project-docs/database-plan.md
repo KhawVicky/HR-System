@@ -38,7 +38,6 @@ Current local status:
 - `candidates`
 - `applications`
 - `resumes`
-- `candidate_scores`
 - `score_breakdowns`
 - `score_breakdown_items`
 - `application_submission_history`
@@ -56,10 +55,11 @@ Current local status:
 - One candidate can apply to many jobs.
 - One application belongs to one job and one candidate.
 - One application has one resume record.
-- One application has one candidate score.
-- One candidate score has many score breakdown records.
+- One application stores the official total score used by the ranking list.
+- One application has many score breakdown records.
 - Duplicate submissions for the same job archive previous application/resume state in `application_submission_history`.
 - One application can have email logs for interview or reject actions.
+- Internal notification messages are stored in `notifications` and retained for 90 days.
 
 ## Scoring Notes
 
@@ -67,6 +67,17 @@ Current local status:
 - Criteria raw score is converted using weight.
 - Eligibility filter result should not erase score breakdown.
 - Filtered out candidates should remain reviewable by HR.
+
+## Notification Notes
+
+- New candidate applications create unread notifications for active HR Staff users.
+- The header notification badge shows unread messages and caps the display at `99+`.
+- Hover preview shows the latest three messages.
+- Opening the notification page marks the user's notifications as read.
+- Notification types are limited to `new_application` and `email_sent`.
+- New application notifications are visible to all active HR Staff users.
+- Email sent notifications are visible only to the HR user who sent the interview or rejection email; the sender is recorded in `email_logs.sent_by_user_id`.
+- Notifications can store `related_application_id` so a user can open the related candidate details from the notification.
 
 ## Verified Tables
 
@@ -82,7 +93,6 @@ Current local status:
 - `candidates`
 - `applications`
 - `resumes`
-- `candidate_scores`
 - `score_breakdowns`
 - `score_breakdown_items`
 - `application_submission_history`

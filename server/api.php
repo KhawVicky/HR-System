@@ -51,6 +51,10 @@ try {
         users($mysqli);
     } elseif ($method === "POST" && route_is($segments, ["users"])) {
         create_user($mysqli);
+    } elseif ($method === "GET" && route_is($segments, ["notifications"])) {
+        notifications($mysqli);
+    } elseif ($method === "PATCH" && route_is($segments, ["notifications", "read"])) {
+        mark_notifications_read($mysqli);
     } elseif ($method === "GET" && route_is($segments, ["hr-efficiency"])) {
         hr_efficiency($mysqli);
     } elseif ($method === "GET" && route_is($segments, ["attendance-analytics"])) {
@@ -295,10 +299,9 @@ function job_candidates(mysqli $db, int $jobId): void
         $candidate["skills"] = rows(
             $db,
             "SELECT DISTINCT sbi.requirement_text AS name
-             FROM candidate_scores cs
-             JOIN score_breakdowns sb ON sb.candidate_score_id = cs.id
+             FROM score_breakdowns sb
              JOIN score_breakdown_items sbi ON sbi.score_breakdown_id = sb.id
-             WHERE cs.application_id = ? AND sbi.match_status IN ('matched', 'partial')
+             WHERE sb.application_id = ? AND sbi.match_status IN ('matched', 'partial')
              ORDER BY sbi.requirement_text",
             "i",
             [(int) $candidate["applicationId"]]
@@ -312,8 +315,9 @@ function job_candidates(mysqli $db, int $jobId): void
                ash.job_id AS jobId,
                j.title AS jobTitle,
                j.department,
+               ash.original_submitted_at AS submittedDate,
                ash.previous_score AS score,
-               ash.previous_rank_no AS rank,
+               NULL AS rank,
                CONCAT(
                  ash.submission_no,
                  CASE
@@ -339,12 +343,25 @@ function job_candidates(mysqli $db, int $jobId): void
                j.id AS jobId,
                j.title AS jobTitle,
                j.department,
+               a.submitted_at AS submittedDate,
                a.total_score AS score,
-               a.rank_no AS rank,
+               CASE
+                 WHEN a.application_status IN ('filtered_out', 'rejected') THEN NULL
+                 ELSE COALESCE(
+                   a.rank_no,
+                   (
+                     SELECT COUNT(*) + 1
+                     FROM applications ranked
+                     WHERE ranked.job_id = a.job_id
+                       AND ranked.application_status IN ('new', 'reviewed', 'shortlisted', 'interview')
+                       AND COALESCE(ranked.total_score, 0) > COALESCE(a.total_score, 0)
+                   )
+                 )
+               END AS rank,
                CASE
                  WHEN a.is_shortlisted = 1 AND a.application_status <> 'interview' THEN 'shortlisted'
                  ELSE a.application_status
-               END AS status
+             END AS status
              FROM applications a
              JOIN jobs j ON j.id = a.job_id
              WHERE a.candidate_id = ? AND a.id <> ?
@@ -363,10 +380,9 @@ function candidate_breakdown(mysqli $db, int $applicationId): array
     $breakdowns = rows(
         $db,
         "SELECT sb.id, jc.criteria_name AS title, sb.raw_score AS criteriaScore, sb.weight, sb.weighted_score AS weightedScore, sb.explanation AS justification
-         FROM candidate_scores cs
-         JOIN score_breakdowns sb ON sb.candidate_score_id = cs.id
+         FROM score_breakdowns sb
          JOIN job_criteria jc ON jc.id = sb.criteria_id
-         WHERE cs.application_id = ?
+         WHERE sb.application_id = ?
          ORDER BY jc.sort_order",
         "i",
         [$applicationId]
@@ -391,6 +407,9 @@ function update_application(mysqli $db, int $applicationId): void
 {
     $data = input_json();
     $status = (string) ($data["status"] ?? "");
+    $actionUserId = (int) ($data["actionUserId"] ?? 0);
+    $interviewDateTime = trim((string) ($data["interviewDateTime"] ?? ""));
+    $emailAction = filter_var($data["emailAction"] ?? false, FILTER_VALIDATE_BOOLEAN);
     $allowed = ["new", "reviewed", "shortlisted", "interview", "rejected", "filtered_out"];
 
     if (!in_array($status, $allowed, true)) {
@@ -403,8 +422,14 @@ function update_application(mysqli $db, int $applicationId): void
         exec_stmt($db, "UPDATE applications SET is_shortlisted = 0, application_status = IF(application_status = 'interview', application_status, 'reviewed'), reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
     } elseif ($status === "interview") {
         exec_stmt($db, "UPDATE applications SET is_shortlisted = 1, interview_sent_at = COALESCE(interview_sent_at, NOW()), application_status = 'interview', reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
+        if ($emailAction) {
+            create_email_sent_notification($db, $applicationId, $actionUserId, "interview", $interviewDateTime);
+        }
     } elseif ($status === "rejected") {
         exec_stmt($db, "UPDATE applications SET application_status = 'rejected', is_shortlisted = 0, reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
+        if ($emailAction) {
+            create_email_sent_notification($db, $applicationId, $actionUserId, "reject", "");
+        }
     } else {
         exec_stmt($db, "UPDATE applications SET application_status = ?, reviewed_at = NOW() WHERE id = ?", "si", [$status, $applicationId]);
     }
@@ -522,8 +547,8 @@ function submit_application(mysqli $db, string $jobCode): void
         "isssi",
         [$applicationId, $resume["originalName"], $resume["publicUrl"], $resume["mimeType"], $resume["size"]]
     );
-    exec_stmt($db, "INSERT INTO candidate_scores (application_id, total_raw_score, total_weighted_score) VALUES (?, ?, ?)", "idd", [$applicationId, $score, $score]);
-
+    create_score_breakdown($db, $applicationId, (int) $job["id"], $score);
+    create_application_notifications($db, $applicationId, $fullName, (int) $job["id"], false);
     respond(["ok" => true, "applicationId" => $applicationId], 201);
 }
 
@@ -619,12 +644,12 @@ function replace_existing_application(
 
         exec_stmt(
             $db,
-            "INSERT INTO candidate_scores (application_id, total_raw_score, total_weighted_score)
-             VALUES (?, ?, ?)
-             ON DUPLICATE KEY UPDATE total_raw_score = VALUES(total_raw_score), total_weighted_score = VALUES(total_weighted_score), evaluated_at = CURRENT_TIMESTAMP",
-            "idd",
-            [$applicationId, $score, $score]
+            "DELETE FROM score_breakdowns WHERE application_id = ?",
+            "i",
+            [$applicationId]
         );
+        create_score_breakdown($db, $applicationId, $jobId, $score);
+        create_application_notifications($db, $applicationId, $fullName, $jobId, true);
 
         $db->commit();
     } catch (Throwable $error) {
@@ -633,6 +658,208 @@ function replace_existing_application(
     }
 
     respond(["ok" => true, "applicationId" => $applicationId, "replaced" => true], 200);
+}
+
+function create_score_breakdown(mysqli $db, int $applicationId, int $jobId, float $score): void
+{
+    $criteria = rows(
+        $db,
+        "SELECT id, criteria_name, weight, sort_order FROM job_criteria WHERE job_id = ? AND is_active = 1 ORDER BY sort_order",
+        "i",
+        [$jobId]
+    );
+
+    foreach ($criteria as $criterion) {
+        $rawScore = max(0, min(100, $score));
+        $weight = (float) $criterion["weight"];
+        $weightedScore = round(($rawScore / 100) * $weight, 2);
+        $criteriaName = (string) $criterion["criteria_name"];
+
+        exec_stmt(
+            $db,
+            "INSERT INTO score_breakdowns (application_id, criteria_id, raw_score, weight, weighted_score, explanation)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               raw_score = VALUES(raw_score),
+               weight = VALUES(weight),
+               weighted_score = VALUES(weighted_score),
+               explanation = VALUES(explanation)",
+            "iiddds",
+            [
+                $applicationId,
+                (int) $criterion["id"],
+                $rawScore,
+                $weight,
+                $weightedScore,
+                "$criteriaName evaluated from submitted resume information and job requirements.",
+            ]
+        );
+
+        $breakdown = row(
+            $db,
+            "SELECT id FROM score_breakdowns WHERE application_id = ? AND criteria_id = ?",
+            "ii",
+            [$applicationId, (int) $criterion["id"]]
+        );
+        if ($breakdown) {
+            exec_stmt(
+                $db,
+                "INSERT INTO score_breakdown_items (score_breakdown_id, requirement_text, match_status, evidence_text, item_score)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                   match_status = VALUES(match_status),
+                   evidence_text = VALUES(evidence_text),
+                   item_score = VALUES(item_score)",
+                "isssd",
+                [
+                    (int) $breakdown["id"],
+                    $criteriaName,
+                    $rawScore >= 80 ? "matched" : ($rawScore >= 60 ? "partial" : "missing"),
+                    "The resume was submitted through the application form and is ready for HR review.",
+                    $rawScore,
+                ]
+            );
+        }
+    }
+}
+
+function cleanup_old_notifications(mysqli $db): void
+{
+    exec_stmt($db, "DELETE FROM notifications WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)");
+}
+
+function create_application_notifications(mysqli $db, int $applicationId, string $candidateName, int $jobId, bool $isResubmission): void
+{
+    cleanup_old_notifications($db);
+
+    $job = row($db, "SELECT title FROM jobs WHERE id = ?", "i", [$jobId]);
+    $jobTitle = (string) ($job["title"] ?? "Job");
+    $title = "New Application for $jobTitle";
+    $message = $isResubmission
+        ? "A candidate has resubmitted an application."
+        : "A new candidate has submitted an application.";
+
+    $hrUsers = rows($db, "SELECT id FROM users WHERE role_id = 1 AND status = 'active'");
+    foreach ($hrUsers as $user) {
+        exec_stmt(
+            $db,
+            "INSERT INTO notifications (user_id, related_application_id, notification_type, title, message)
+             VALUES (?, ?, 'new_application', ?, ?)",
+            "iiss",
+            [(int) $user["id"], $applicationId, $title, $message]
+        );
+    }
+}
+
+function create_email_sent_notification(mysqli $db, int $applicationId, int $userId, string $emailType, string $interviewDateTime): void
+{
+    if ($userId <= 0 || !in_array($emailType, ["interview", "reject"], true)) {
+        return;
+    }
+
+    cleanup_old_notifications($db);
+
+    $application = row(
+        $db,
+        "SELECT c.full_name AS candidateName, c.email AS candidateEmail, j.title AS jobTitle
+         FROM applications a
+         JOIN candidates c ON c.id = a.candidate_id
+         JOIN jobs j ON j.id = a.job_id
+         WHERE a.id = ?",
+        "i",
+        [$applicationId]
+    );
+    if (!$application) {
+        return;
+    }
+
+    $templateKey = $emailType === "interview" ? "interview_invitation" : "reject_application";
+    $template = row($db, "SELECT id, subject, body FROM email_templates WHERE template_key = ? AND is_active = 1 LIMIT 1", "s", [$templateKey]);
+    $title = $emailType === "interview" ? "Interview Email Sent" : "Rejection Email Sent";
+    $message = $emailType === "interview"
+        ? "The interview email has been sent successfully."
+        : "The rejection email has been sent successfully.";
+    $subject = (string) ($template["subject"] ?? $title);
+    $body = (string) ($template["body"] ?? $message);
+    $scheduledAt = $emailType === "interview" && $interviewDateTime !== "" ? str_replace("T", " ", $interviewDateTime) : null;
+
+    exec_stmt(
+        $db,
+        "INSERT INTO email_logs (
+           application_id, sent_by_user_id, template_id, email_type,
+           recipient_email, subject, body, scheduled_interview_at, status
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent')",
+        "iiisssss",
+        [
+            $applicationId,
+            $userId,
+            $template["id"] ?? null,
+            $emailType,
+            (string) $application["candidateEmail"],
+            $subject,
+            $body,
+            $scheduledAt,
+        ]
+    );
+
+    exec_stmt(
+        $db,
+        "INSERT INTO notifications (user_id, related_application_id, notification_type, title, message)
+         VALUES (?, ?, 'email_sent', ?, ?)",
+        "iiss",
+        [$userId, $applicationId, $title, $message]
+    );
+}
+
+function notifications(mysqli $db): void
+{
+    cleanup_old_notifications($db);
+
+    $userId = (int) ($_GET["userId"] ?? 0);
+    if ($userId <= 0) {
+        respond(["error" => "userId is required"], 422);
+    }
+
+    $items = rows(
+        $db,
+        "SELECT
+           n.id,
+           n.related_application_id AS applicationId,
+           a.job_id AS jobId,
+           n.notification_type AS notificationType,
+           n.title,
+           n.message,
+           n.is_read AS isRead,
+           n.created_at AS createdAt
+         FROM notifications n
+         LEFT JOIN applications a ON a.id = n.related_application_id
+         WHERE n.user_id = ?
+         ORDER BY n.created_at DESC
+         LIMIT 100",
+        "i",
+        [$userId]
+    );
+    $summary = row($db, "SELECT COUNT(*) AS unreadCount FROM notifications WHERE user_id = ? AND is_read = 0", "i", [$userId]);
+
+    respond([
+        "items" => $items,
+        "preview" => array_slice($items, 0, 3),
+        "unreadCount" => (int) ($summary["unreadCount"] ?? 0),
+    ]);
+}
+
+function mark_notifications_read(mysqli $db): void
+{
+    cleanup_old_notifications($db);
+
+    $data = input_json();
+    $userId = (int) ($data["userId"] ?? 0);
+    if ($userId <= 0) {
+        respond(["error" => "userId is required"], 422);
+    }
+
+    exec_stmt($db, "UPDATE notifications SET is_read = 1 WHERE user_id = ?", "i", [$userId]);
+    respond(["ok" => true]);
 }
 
 function ordinal_submission_label(int $submissionNo): string

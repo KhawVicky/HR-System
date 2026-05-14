@@ -1,5 +1,5 @@
 import { useEffect, useState, type ChangeEvent } from "react";
-import { useParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { PageLayout } from "./PageLayout";
 import { Button } from "./ui/button";
 import {
@@ -42,7 +42,7 @@ import {
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
-import { apiFetch } from "../lib/api";
+import { apiFetch, getStoredUser } from "../lib/api";
 import {
   Tooltip,
   TooltipContent,
@@ -97,6 +97,7 @@ interface Candidate {
   jobId: string;
   jobTitle: string;
   department: string;
+  submittedDate: string;
   score: number;
   rank: number | null;
   status: string;
@@ -213,6 +214,7 @@ type ApiCandidate = {
     jobId: number;
     jobTitle: string;
     department: string;
+    submittedDate: string;
     score: string | number;
     rank: string | number | null;
     status: string;
@@ -295,6 +297,7 @@ const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
       jobId: String(history.jobId),
       jobTitle: history.jobTitle,
       department: history.department,
+      submittedDate: formatDateOnly(history.submittedDate),
       score: Number(history.score),
       rank: history.rank === null ? null : Number(history.rank),
       status: history.status,
@@ -347,6 +350,7 @@ const recalculateRanks = (candidateList: Candidate[]) => {
 
 export function CandidateList() {
   const { jobId } = useParams();
+  const [searchParams] = useSearchParams();
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [jobTitle, setJobTitle] = useState("Candidates");
@@ -380,9 +384,31 @@ export function CandidateList() {
       .then((data) => {
         setJobTitle(data.job.title);
         setDepartment(data.job.department);
-        setCandidates(
-          recalculateRanks(data.candidates.map(mapApiCandidate)),
+        const loadedCandidates = recalculateRanks(
+          data.candidates.map(mapApiCandidate),
         );
+        setCandidates(loadedCandidates);
+
+        const targetApplicationId = searchParams.get("applicationId");
+        const targetCandidateId = searchParams.get("candidateId");
+        const targetIndex = loadedCandidates.findIndex(
+          (candidate) =>
+            (targetApplicationId &&
+              candidate.applicationId === targetApplicationId) ||
+            (targetCandidateId && candidate.id === targetCandidateId),
+        );
+
+        if (targetIndex >= 0) {
+          const targetCandidate = loadedCandidates[targetIndex];
+          setExpandedCandidate(targetCandidate.id);
+          setCurrentPage(
+            Math.floor(targetIndex / CANDIDATES_PER_PAGE) + 1,
+          );
+          setJobHistoryPages((prev) => ({
+            ...prev,
+            [targetCandidate.applicationId || targetCandidate.id]: 1,
+          }));
+        }
       })
       .catch((error) =>
         toast.error(
@@ -391,7 +417,7 @@ export function CandidateList() {
             : "Failed to load candidates",
         ),
       );
-  }, [jobId]);
+  }, [jobId, searchParams]);
 
   const getTotalWeightedScore = (
     scoreBreakdown: ScoreBreakdownItem[],
@@ -399,11 +425,14 @@ export function CandidateList() {
 
   const getTotalMaxScore = () => 100;
 
-  const getScorePercentage = (
-    scoreBreakdown: ScoreBreakdownItem[],
-  ) => {
-    return Math.round(getTotalWeightedScore(scoreBreakdown));
-  };
+  const getCandidateDisplayScore = (candidate: Candidate) =>
+    Number(
+      (candidate.score ?? getTotalWeightedScore(candidate.scoreBreakdown))
+        .toFixed(1),
+    );
+
+  const getCandidateScorePercentage = (candidate: Candidate) =>
+    Math.round(getCandidateDisplayScore(candidate));
 
   const handleInternalResumeUpload = (
     event: ChangeEvent<HTMLInputElement>,
@@ -596,6 +625,7 @@ export function CandidateList() {
   const updateCandidateStatus = async (
     candidateId: string,
     newStatus: CandidateStatus,
+    options: { interviewDateTime?: string; emailAction?: boolean } = {},
   ) => {
     const target = candidates.find(
       (candidate) => candidate.id === candidateId,
@@ -637,9 +667,15 @@ export function CandidateList() {
     if (!target?.applicationId) return;
 
     try {
+      const currentUser = getStoredUser();
       await apiFetch(`/applications/${target.applicationId}`, {
         method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({
+          status: newStatus,
+          actionUserId: currentUser?.id,
+          interviewDateTime: options.interviewDateTime,
+          emailAction: options.emailAction,
+        }),
       });
     } catch (error) {
       toast.error(
@@ -702,6 +738,7 @@ export function CandidateList() {
     updateCandidateStatus(
       interviewPopupCandidate.id,
       "interview",
+      { interviewDateTime, emailAction: true },
     );
 
     toast.success(
@@ -713,7 +750,7 @@ export function CandidateList() {
   };
 
   const handleRejectCandidate = (candidate: Candidate) => {
-    updateCandidateStatus(candidate.id, "rejected");
+    updateCandidateStatus(candidate.id, "rejected", { emailAction: true });
     toast.success(`Rejection email sent to ${candidate.name}`);
   };
 
@@ -1135,23 +1172,15 @@ export function CandidateList() {
                         <div className="flex items-center justify-center gap-1">
                           <span
                             className={`text-2xl font-bold ${getScoreColor(
-                              getScorePercentage(
-                                candidate.scoreBreakdown,
-                              ),
+                              getCandidateScorePercentage(candidate),
                             )}`}
                           >
-                            {getTotalWeightedScore(
-                              candidate.scoreBreakdown,
-                            )}
+                            {getCandidateDisplayScore(candidate)}
                           </span>
 
-                          {getScorePercentage(
-                            candidate.scoreBreakdown,
-                          ) >= 90 ? (
+                          {getCandidateScorePercentage(candidate) >= 90 ? (
                             <TrendingUp className="w-4 h-4 text-green-600" />
-                          ) : getScorePercentage(
-                              candidate.scoreBreakdown,
-                            ) < 75 ? (
+                          ) : getCandidateScorePercentage(candidate) < 75 ? (
                             <TrendingDown className="w-4 h-4 text-red-600" />
                           ) : null}
                         </div>
@@ -1215,9 +1244,7 @@ export function CandidateList() {
                             </div>
 
                             <div className="text-[20px] font-bold text-green-600 leading-none mt-1">
-                              {getTotalWeightedScore(
-                                candidate.scoreBreakdown,
-                              )}
+                              {getCandidateDisplayScore(candidate)}
                               <span className="text-slate-400 font-medium">
                                 {" "}
                                 / {getTotalMaxScore()}
@@ -1276,8 +1303,9 @@ export function CandidateList() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="grid grid-cols-5 bg-[#f5f9ff] px-5 py-3 text-sm font-semibold text-slate-700">
+        <div className="grid grid-cols-6 bg-[#f5f9ff] px-5 py-3 text-sm font-semibold text-slate-700">
           <div className="col-span-2">Job Title</div>
+          <div>Submitted Date</div>
           <div>Score</div>
           <div>Rank</div>
           <div>Status</div>
@@ -1286,7 +1314,7 @@ export function CandidateList() {
         {pagedJobHistory.map((job) => (
           <div
             key={`${candidate.id}-${job.historyKey}`}
-            className="grid grid-cols-5 items-center border-t border-slate-200 px-5 py-4 text-sm"
+            className="grid grid-cols-6 items-center border-t border-slate-200 px-5 py-4 text-sm"
           >
             <div className="col-span-2">
               <a
@@ -1298,6 +1326,10 @@ export function CandidateList() {
               <p className="mt-1 text-xs text-slate-500">
                 {job.department}
               </p>
+            </div>
+
+            <div className="font-semibold text-slate-800">
+              {job.submittedDate}
             </div>
 
             <div className="font-semibold text-slate-800">

@@ -169,28 +169,17 @@ CREATE TABLE IF NOT EXISTS resumes (
   UNIQUE KEY uq_resumes_application (application_id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS candidate_scores (
-  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  application_id INT UNSIGNED NOT NULL,
-  total_raw_score DECIMAL(5,2) NOT NULL DEFAULT 0,
-  total_weighted_score DECIMAL(5,2) NOT NULL DEFAULT 0,
-  scoring_method VARCHAR(120) NOT NULL DEFAULT 'nlp_rule_based_weighted_scoring',
-  evaluated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_candidate_scores_application FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_candidate_scores_application (application_id)
-) ENGINE=InnoDB;
-
 CREATE TABLE IF NOT EXISTS score_breakdowns (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  candidate_score_id INT UNSIGNED NOT NULL,
+  application_id INT UNSIGNED NOT NULL,
   criteria_id INT UNSIGNED NOT NULL,
   raw_score DECIMAL(5,2) NOT NULL,
   weight DECIMAL(5,2) NOT NULL,
   weighted_score DECIMAL(5,2) NOT NULL,
   explanation TEXT NULL,
-  CONSTRAINT fk_score_breakdowns_score FOREIGN KEY (candidate_score_id) REFERENCES candidate_scores(id) ON DELETE CASCADE,
+  CONSTRAINT fk_score_breakdowns_application FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE,
   CONSTRAINT fk_score_breakdowns_criteria FOREIGN KEY (criteria_id) REFERENCES job_criteria(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_score_breakdowns_score_criteria (candidate_score_id, criteria_id)
+  UNIQUE KEY uq_score_breakdowns_application_criteria (application_id, criteria_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS score_breakdown_items (
@@ -259,12 +248,16 @@ CREATE TABLE IF NOT EXISTS email_logs (
 CREATE TABLE IF NOT EXISTS notifications (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id INT UNSIGNED NOT NULL,
+  related_application_id INT UNSIGNED NULL,
   notification_type VARCHAR(80) NOT NULL,
   title VARCHAR(180) NOT NULL,
   message TEXT NOT NULL,
   is_read TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_notifications_application FOREIGN KEY (related_application_id) REFERENCES applications(id) ON DELETE SET NULL,
+  INDEX idx_notifications_user_read_created (user_id, is_read, created_at),
+  INDEX idx_notifications_created (created_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS attendance_records (
@@ -427,15 +420,7 @@ ON DUPLICATE KEY UPDATE
   file_size_bytes = VALUES(file_size_bytes),
   parsing_status = VALUES(parsing_status);
 
-INSERT INTO candidate_scores (id, application_id, total_raw_score, total_weighted_score, scoring_method) VALUES
-  (1, 1, 88.50, 88.50, 'nlp_rule_based_weighted_scoring'),
-  (2, 2, 67.00, 67.00, 'nlp_rule_based_weighted_scoring')
-ON DUPLICATE KEY UPDATE
-  total_raw_score = VALUES(total_raw_score),
-  total_weighted_score = VALUES(total_weighted_score),
-  scoring_method = VALUES(scoring_method);
-
-INSERT INTO score_breakdowns (id, candidate_score_id, criteria_id, raw_score, weight, weighted_score, explanation) VALUES
+INSERT INTO score_breakdowns (id, application_id, criteria_id, raw_score, weight, weighted_score, explanation) VALUES
   (1, 1, 1, 90.00, 40.00, 36.00, 'Strong match for React and TypeScript; Node.js and AWS also mentioned.'),
   (2, 1, 2, 88.00, 25.00, 22.00, 'Relevant frontend development experience exceeds minimum requirement.'),
   (3, 1, 3, 92.00, 20.00, 18.40, 'Relevant computer science education and strong CGPA.'),
@@ -484,9 +469,9 @@ ON DUPLICATE KEY UPDATE
   body = VALUES(body),
   created_by_user_id = VALUES(created_by_user_id);
 
-INSERT INTO notifications (user_id, notification_type, title, message) VALUES
-  (2, 'new_application', 'New candidate application', 'Alice Chen submitted an application for Senior Frontend Developer.'),
-  (2, 'filtered_out', 'Candidate filtered out', 'Daniel Tan was reviewed through the score breakdown.');
+INSERT INTO notifications (user_id, related_application_id, notification_type, title, message) VALUES
+  (2, 1, 'new_application', 'New Application for Senior Frontend Developer', 'A new candidate has submitted an application.'),
+  (2, 1, 'email_sent', 'Interview Email Sent', 'The interview email has been sent successfully.');
 
 INSERT INTO attendance_records (user_id, attendance_date, status, check_in_time, check_out_time, remarks) VALUES
   (2, CURRENT_DATE, 'present', '08:55:00', NULL, 'Optional attendance analytics demo record.')

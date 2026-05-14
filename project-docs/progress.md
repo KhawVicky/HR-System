@@ -77,3 +77,8 @@
 - Candidate application now uploads the actual PDF resume through multipart form data, stores it under the XAMPP API uploads folder, and saves the public resume URL for the HR Candidate List resume button.
 - Candidate duplicate applications now show a confirmation dialog; confirmed resubmissions replace the existing application and archive the previous version as submission history before other job history.
 - Reworked the database to the final 20-table design: restored `roles`, removed `candidate_job_history`, expanded `application_submission_history`, rebuilt XAMPP data from schema plus seed files, and updated the API to derive job history from `applications`.
+- Removed the `candidate_scores` table. `applications.total_score` is now the official application score, and `score_breakdowns` links directly to `applications`.
+- Fixed candidate score display so new applications without score breakdowns show the official score instead of 0, and cleared stale breakdowns from resubmitted applications.
+- Added header notifications: new candidate applications create unread HR notifications, the bell badge caps at `99+`, hover shows the latest three messages, `/notifications` shows all retained messages, and notification records are cleaned after 90 days.
+- Limited notifications to `new_application` and `email_sent`; interview/rejection email actions now create an `email_logs` row and a confirmation notification only for the HR user who sent the email.
+- Notification records now store the related application, and clicking a notification opens the matching job candidate page with that candidate details panel expanded.

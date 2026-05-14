@@ -28,6 +28,8 @@ import {
   ChevronDown,
   Check,
   Pencil,
+  GraduationCap,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -109,10 +111,65 @@ export function JobDetails() {
     { value: "draft", label: "Draft", color: "bg-slate-400" },
   ];
   const criteria = job.criteria ?? [];
+  const eligibility = job.eligibility ?? {};
   const totalCriteriaWeight = criteria.reduce(
     (sum, item) => sum + Number(item.weight),
     0,
   );
+  const getEligibilityValue = (key: string) => {
+    const value = eligibility[key];
+    if (value === null || value === undefined || value === "") return "-";
+    return String(value);
+  };
+  const eligibilityItems = [
+    {
+      label: "Minimum CGPA",
+      value: getEligibilityValue("minCgpa"),
+      icon: GraduationCap,
+    },
+    {
+      label: "Minimum Experience",
+      value:
+        getEligibilityValue("minYearsExperience") === "-"
+          ? "-"
+          : `${getEligibilityValue("minYearsExperience")} years`,
+      icon: Calendar,
+    },
+    {
+      label: "Qualification",
+      value: getEligibilityValue("requiredQualification"),
+      icon: FileText,
+    },
+    {
+      label: "Language",
+      value: getEligibilityValue("requiredLanguage"),
+      icon: Users,
+    },
+    {
+      label: "Location",
+      value: getEligibilityValue("requiredLocation"),
+      icon: MapPin,
+    },
+    {
+      label: "Max Notice Period",
+      value:
+        getEligibilityValue("maxNoticePeriodDays") === "-"
+          ? "-"
+          : `${getEligibilityValue("maxNoticePeriodDays")} days`,
+      icon: Clock,
+    },
+    {
+      label: "Internship Accepted",
+      value:
+        eligibility.internshipAccepted === null ||
+        eligibility.internshipAccepted === undefined
+          ? "-"
+          : Number(eligibility.internshipAccepted) === 1
+            ? "Yes"
+            : "No",
+      icon: Check,
+    },
+  ];
 
   const handleStatusChange = (newStatus: string) => {
     setCurrentStatus(newStatus);
@@ -374,7 +431,7 @@ export function JobDetails() {
         Overview
       </TabsTrigger>
       <TabsTrigger value="criteria">
-        Criteria & Weight
+        Screening Setup
       </TabsTrigger>
       <TabsTrigger value="sharing">Sharing</TabsTrigger>
     </TabsList>
@@ -454,10 +511,44 @@ export function JobDetails() {
           <TabsContent value="criteria" className="space-y-6">
             <Card className="shadow-md">
               <CardHeader>
-                <CardTitle>Criteria & Weight</CardTitle>
+                <CardTitle>Eligibility Filter</CardTitle>
                 <CardDescription>
-                  Scoring criteria used to rank candidates for this
-                  job
+                  Minimum requirements candidates must meet before ranking
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {eligibilityItems.map((item) => {
+                    const Icon = item.icon;
+
+                    return (
+                      <div
+                        key={item.label}
+                        className="flex min-h-[86px] items-start gap-3 rounded-lg border border-slate-200 bg-white p-4"
+                      >
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-50 text-[#003B7A]">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            {item.label}
+                          </p>
+                          <p className="mt-1 break-words text-sm font-semibold text-slate-900">
+                            {item.value}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-md">
+              <CardHeader>
+                <CardTitle>Ranking Criteria & Weight</CardTitle>
+                <CardDescription>
+                  Weighted scoring criteria used after eligibility screening
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">

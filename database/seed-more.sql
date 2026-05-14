@@ -135,17 +135,8 @@ ON DUPLICATE KEY UPDATE
   file_size_bytes = VALUES(file_size_bytes),
   parsing_status = VALUES(parsing_status);
 
-INSERT INTO candidate_scores (application_id, total_raw_score, total_weighted_score, scoring_method)
-SELECT id, total_score, total_score, 'nlp_rule_based_weighted_scoring'
-FROM applications
-WHERE id BETWEEN 100 AND 111
-ON DUPLICATE KEY UPDATE
-  total_raw_score = VALUES(total_raw_score),
-  total_weighted_score = VALUES(total_weighted_score),
-  scoring_method = VALUES(scoring_method);
-
-INSERT INTO score_breakdowns (candidate_score_id, criteria_id, raw_score, weight, weighted_score, explanation)
-SELECT cs.id, jc.id,
+INSERT INTO score_breakdowns (application_id, criteria_id, raw_score, weight, weighted_score, explanation)
+SELECT a.id, jc.id,
   CASE jc.sort_order
     WHEN 1 THEN LEAST(100, a.total_score + 7)
     WHEN 2 THEN LEAST(100, a.total_score + 2)
@@ -161,7 +152,6 @@ SELECT cs.id, jc.id,
   END / 100) * jc.weight, 2) AS weighted_score,
   CONCAT(jc.criteria_name, ' evaluated from parsed resume content and senior frontend requirements.') AS explanation
 FROM applications a
-JOIN candidate_scores cs ON cs.application_id = a.id
 JOIN job_criteria jc ON jc.job_id = a.job_id
 WHERE a.id BETWEEN 100 AND 111
 ON DUPLICATE KEY UPDATE
@@ -177,8 +167,7 @@ SELECT sb.id, jc.criteria_name,
   sb.raw_score
 FROM score_breakdowns sb
 JOIN job_criteria jc ON jc.id = sb.criteria_id
-JOIN candidate_scores cs ON cs.id = sb.candidate_score_id
-WHERE cs.application_id BETWEEN 100 AND 111
+WHERE sb.application_id BETWEEN 100 AND 111
 ON DUPLICATE KEY UPDATE
   match_status = VALUES(match_status),
   evidence_text = VALUES(evidence_text),

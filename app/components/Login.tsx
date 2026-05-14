@@ -116,10 +116,6 @@ export function Login() {
             <Button type="submit" className="w-full bg-[#003B7A] hover:bg-[#002f63] text-white shadow-sm">
               Sign In
             </Button>
-
-            <p className="text-sm text-slate-500 text-center">
-              Demo users: hr@uwc.com.my, manager@uwc.com.my
-            </p>
           </form>
         </CardContent>
       </Card>

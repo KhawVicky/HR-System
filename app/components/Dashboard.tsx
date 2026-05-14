@@ -43,6 +43,7 @@ import {
   getStoredUser,
   type JobSummary,
 } from "../lib/api";
+import { HeaderNotifications } from "./HeaderNotifications";
 
 type JobStatus = "active" | "closed" | "draft";
 
@@ -250,6 +251,7 @@ export function Dashboard() {
                   User Management
                 </Button>
               )}
+              <HeaderNotifications />
               {/*  report button
               <Button
                 variant="ghost"

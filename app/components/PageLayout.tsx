@@ -8,6 +8,7 @@ import {
   canViewHrEfficiency,
   getStoredUser,
 } from "../lib/api";
+import { HeaderNotifications } from "./HeaderNotifications";
 
 interface BreadcrumbItem {
   label: string;
@@ -86,6 +87,8 @@ export function PageLayout({
                   User Management
                 </Button>
               )}
+
+              <HeaderNotifications />
 
               <div className="flex items-center gap-2 border-l border-slate-200 pl-4">
                 <Button
