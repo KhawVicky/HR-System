@@ -114,14 +114,12 @@ ON DUPLICATE KEY UPDATE
   ai_summary = VALUES(ai_summary),
   reviewed_at = VALUES(reviewed_at);
 
+DELETE FROM resumes
+WHERE original_file_name LIKE 'resume-application-%.pdf';
+
 INSERT INTO resumes (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes, parsing_status)
 SELECT id, CONCAT('resume-application-', id, '.pdf'), CONCAT('/uploads/resumes/resume-application-', id, '.pdf'), 'application/pdf', 180000 + (id * 1024), 'parsed'
-FROM applications
-ON DUPLICATE KEY UPDATE
-  original_file_name = VALUES(original_file_name),
-  stored_file_path = VALUES(stored_file_path),
-  file_size_bytes = VALUES(file_size_bytes),
-  parsing_status = VALUES(parsing_status);
+FROM applications;
 
 INSERT INTO score_breakdowns (application_id, criteria_id, raw_score, weight, weighted_score, explanation)
 SELECT a.id, jc.id,

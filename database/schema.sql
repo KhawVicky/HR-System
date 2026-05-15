@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS resumes (
   parsing_status ENUM('pending', 'parsed', 'failed') NOT NULL DEFAULT 'pending',
   uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_resumes_application FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_resumes_application (application_id)
+  INDEX idx_resumes_application (application_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS score_breakdowns (
@@ -410,15 +410,12 @@ ON DUPLICATE KEY UPDATE
   rank_no = VALUES(rank_no),
   ai_summary = VALUES(ai_summary);
 
+DELETE FROM resumes
+WHERE original_file_name IN ('alice-chen-resume.pdf', 'daniel-tan-resume.pdf');
+
 INSERT INTO resumes (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes, parsing_status) VALUES
   (1, 'alice-chen-resume.pdf', '/uploads/resumes/alice-chen-resume.pdf', 'application/pdf', 245760, 'parsed'),
-  (2, 'daniel-tan-resume.pdf', '/uploads/resumes/daniel-tan-resume.pdf', 'application/pdf', 198240, 'parsed')
-ON DUPLICATE KEY UPDATE
-  original_file_name = VALUES(original_file_name),
-  stored_file_path = VALUES(stored_file_path),
-  file_mime_type = VALUES(file_mime_type),
-  file_size_bytes = VALUES(file_size_bytes),
-  parsing_status = VALUES(parsing_status);
+  (2, 'daniel-tan-resume.pdf', '/uploads/resumes/daniel-tan-resume.pdf', 'application/pdf', 198240, 'parsed');
 
 INSERT INTO score_breakdowns (id, application_id, criteria_id, raw_score, weight, weighted_score, explanation) VALUES
   (1, 1, 1, 90.00, 40.00, 36.00, 'Strong match for React and TypeScript; Node.js and AWS also mentioned.'),

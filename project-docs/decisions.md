@@ -22,7 +22,7 @@
 - User roles are defined in `roles`; `users.role_id` references `roles.id`. The system keeps only HR Staff and Hiring Manager roles.
 - `candidate_job_history` was removed because candidate job history can be derived from `applications`.
 - `candidate_scores` was removed because the prototype only needs one official score per application; `applications.total_score` is the score source of truth and `score_breakdowns` links directly to `applications`.
-- Notifications are stored in the existing `notifications` table and are kept for 90 days. Hover preview does not mark a message as read; opening the full notifications page does. The feature keeps only two notification types: `new_application` for all HR Staff users and `email_sent` for the HR user who sent the email.
+- Notifications are stored in the existing `notifications` table and are kept for 90 days. Hover preview does not mark a message as read; opening the full notifications page does. The feature keeps only two notification types: `new_application` for all active internal user accounts and `email_sent` for the HR user who sent the email.
 - The system has no Admin role. HR Efficiency and User Management are visible only to Hiring Manager users.
 - Project memory is stored in `project-docs/`.
 - Main project rules are stored in `AGENTS.md`.

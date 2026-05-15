@@ -54,7 +54,7 @@ Current local status:
 - One job has one application link.
 - One candidate can apply to many jobs.
 - One application belongs to one job and one candidate.
-- One application has one resume record.
+- One application can have multiple uploaded document records in `resumes`.
 - One application stores the official total score used by the ranking list.
 - One application has many score breakdown records.
 - Duplicate submissions for the same job archive previous application/resume state in `application_submission_history`.
@@ -70,12 +70,12 @@ Current local status:
 
 ## Notification Notes
 
-- New candidate applications create unread notifications for active HR Staff users.
+- New candidate applications create unread notifications for all active internal user accounts.
 - The header notification badge shows unread messages and caps the display at `99+`.
 - Hover preview shows the latest three messages.
 - Opening the notification page marks the user's notifications as read.
 - Notification types are limited to `new_application` and `email_sent`.
-- New application notifications are visible to all active HR Staff users.
+- New application notifications are visible to all active internal user accounts.
 - Email sent notifications are visible only to the HR user who sent the interview or rejection email; the sender is recorded in `email_logs.sent_by_user_id`.
 - Notifications can store `related_application_id` so a user can open the related candidate details from the notification.
 

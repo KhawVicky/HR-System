@@ -82,3 +82,4 @@
 - Added header notifications: new candidate applications create unread HR notifications, the bell badge caps at `99+`, hover shows the latest three messages, `/notifications` shows all retained messages, and notification records are cleaned after 90 days.
 - Limited notifications to `new_application` and `email_sent`; interview/rejection email actions now create an `email_logs` row and a confirmation notification only for the HR user who sent the email.
 - Notification records now store the related application, and clicking a notification opens the matching job candidate page with that candidate details panel expanded.
+- Candidate applications now support multiple uploaded documents per application, and HR can open all uploaded files from the candidate list Resume button.

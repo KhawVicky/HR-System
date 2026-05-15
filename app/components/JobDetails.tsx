@@ -71,8 +71,6 @@ export function JobDetails() {
   const navigate = useNavigate();
   const [job, setJob] = useState<(JobDetailsData & { link: string | null; description: string }) | null>(null);
   const [currentStatus, setCurrentStatus] = useState<string>("active");
-  const [initialStatus, setInitialStatus] = useState<string>("active");
-  const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
     if (!jobId) return;
@@ -89,8 +87,6 @@ export function JobDetails() {
           description: mapJobDescription(loadedJob),
         });
         setCurrentStatus(status);
-        setInitialStatus(status);
-        setHasChanges(false);
       })
       .catch((error) =>
         toast.error(
@@ -108,8 +104,13 @@ export function JobDetails() {
   const statusOptions = [
     { value: "active", label: "Active", color: "bg-green-600" },
     { value: "closed", label: "Closed", color: "bg-slate-600" },
-    { value: "draft", label: "Draft", color: "bg-slate-400" },
   ];
+  const currentStatusLabel =
+    currentStatus === "draft"
+      ? "DRAFT"
+      : statusOptions
+          .find((opt) => opt.value === currentStatus)
+          ?.label.toUpperCase();
   const criteria = job.criteria ?? [];
   const eligibility = job.eligibility ?? {};
   const totalCriteriaWeight = criteria.reduce(
@@ -171,28 +172,26 @@ export function JobDetails() {
     },
   ];
 
-  const handleStatusChange = (newStatus: string) => {
-    setCurrentStatus(newStatus);
-    setHasChanges(newStatus !== initialStatus);
-  };
-
-  const handleSave = async () => {
+  const handleStatusChange = async (newStatus: string) => {
     if (!jobId) return;
+    if (newStatus === currentStatus) return;
+
+    const previousStatus = currentStatus;
+    setCurrentStatus(newStatus);
 
     try {
       await apiFetch(`/jobs/${jobId}`, {
         method: "PATCH",
-        body: JSON.stringify({ status: currentStatus }),
+        body: JSON.stringify({ status: newStatus }),
       });
       toast.success("Job status updated successfully!");
-      setInitialStatus(currentStatus);
-      setHasChanges(false);
       window.dispatchEvent(
         new CustomEvent("jobStatusUpdated", {
-          detail: { jobId, status: currentStatus },
+          detail: { jobId, status: newStatus },
         }),
       );
     } catch (error) {
+      setCurrentStatus(previousStatus);
       toast.error(
         error instanceof Error
           ? error.message
@@ -337,11 +336,7 @@ export function JobDetails() {
                             : "border-slate-300 text-slate-700 hover:bg-slate-50"
                     }`}
                   >
-                    {statusOptions
-                      .find(
-                        (opt) => opt.value === currentStatus,
-                      )
-                      ?.label.toUpperCase()}
+                    {currentStatusLabel}
                     <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -353,9 +348,7 @@ export function JobDetails() {
                   {statusOptions.map((option) => (
                     <DropdownMenuItem
                       key={option.value}
-                      onClick={() =>
-                        handleStatusChange(option.value)
-                      }
+                      onClick={() => handleStatusChange(option.value)}
                       className="flex items-center justify-between cursor-pointer"
                     >
                       <span>{option.label}</span>
@@ -366,15 +359,6 @@ export function JobDetails() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-
-              {hasChanges && (
-                <Button
-                  onClick={handleSave}
-                  className="bg-[#003B7A] hover:bg-[#002f63] text-white shadow-lg px-[20px] py-[8px]"
-                >
-                  Save Changes
-                </Button>
-              )}
             </div>
           </div>
         </div>

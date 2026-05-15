@@ -303,7 +303,9 @@ export function ApplyJob() {
       "noticePeriodDays",
       String(Number(formData.noticePeriod) || 0),
     );
-    applicationData.append("resume", files[0].file);
+    files.forEach((item) => {
+      applicationData.append("resume[]", item.file);
+    });
 
     if (replaceExisting) {
       applicationData.append("replaceExisting", "1");

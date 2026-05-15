@@ -277,8 +277,20 @@ function job_candidates(mysqli $db, int $jobId): void
           a.eligibility_status AS eligibilityStatus,
           a.total_score AS score,
           a.ai_summary AS summary,
-          r.stored_file_path AS resumeUrl,
-          r.original_file_name AS resumeFileName,
+          (
+            SELECT r1.stored_file_path
+            FROM resumes r1
+            WHERE r1.application_id = a.id
+            ORDER BY r1.uploaded_at DESC, r1.id DESC
+            LIMIT 1
+          ) AS resumeUrl,
+          (
+            SELECT r1.original_file_name
+            FROM resumes r1
+            WHERE r1.application_id = a.id
+            ORDER BY r1.uploaded_at DESC, r1.id DESC
+            LIMIT 1
+          ) AS resumeFileName,
           (
             SELECT COUNT(*) + 1
             FROM application_submission_history ash
@@ -286,7 +298,6 @@ function job_candidates(mysqli $db, int $jobId): void
           ) AS currentSubmissionNo
         FROM applications a
         JOIN candidates c ON c.id = a.candidate_id
-        LEFT JOIN resumes r ON r.application_id = a.id
         WHERE a.job_id = ?
         ORDER BY
           CASE WHEN a.rank_no IS NULL THEN 999999 ELSE a.rank_no END,
@@ -296,6 +307,9 @@ function job_candidates(mysqli $db, int $jobId): void
     );
 
     foreach ($candidates as &$candidate) {
+        if (isset($candidate["resumeUrl"])) {
+            $candidate["resumeUrl"] = public_file_url((string) $candidate["resumeUrl"]);
+        }
         $candidate["skills"] = rows(
             $db,
             "SELECT DISTINCT sbi.requirement_text AS name
@@ -307,6 +321,7 @@ function job_candidates(mysqli $db, int $jobId): void
             [(int) $candidate["applicationId"]]
         );
         $candidate["currentSubmissionLabel"] = ordinal_submission_label((int) $candidate["currentSubmissionNo"]);
+        $candidate["documents"] = application_documents($db, (int) $candidate["applicationId"]);
         $candidate["scoreBreakdown"] = candidate_breakdown($db, (int) $candidate["applicationId"]);
         $submissionHistory = rows(
             $db,
@@ -401,6 +416,44 @@ function candidate_breakdown(mysqli $db, int $applicationId): array
     }
 
     return $breakdowns;
+}
+
+function application_documents(mysqli $db, int $applicationId): array
+{
+    $documents = rows(
+        $db,
+        "SELECT
+           id,
+           original_file_name AS fileName,
+           stored_file_path AS fileUrl,
+           file_mime_type AS mimeType,
+           file_size_bytes AS fileSize,
+           uploaded_at AS uploadedAt
+         FROM resumes
+         WHERE application_id = ?
+         ORDER BY uploaded_at DESC, id DESC",
+        "i",
+        [$applicationId]
+    );
+
+    foreach ($documents as &$document) {
+        $document["fileUrl"] = public_file_url((string) $document["fileUrl"]);
+    }
+
+    return $documents;
+}
+
+function public_file_url(string $path): string
+{
+    if ($path === "" || preg_match("#^https?://#i", $path)) {
+        return $path;
+    }
+
+    $scheme = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off") ? "https" : "http";
+    $host = (string) ($_SERVER["HTTP_HOST"] ?? "localhost");
+    $basePath = rtrim(str_replace("\\", "/", dirname((string) ($_SERVER["SCRIPT_NAME"] ?? "/uwc-hr-api/api.php"))), "/");
+
+    return "{$scheme}://{$host}{$basePath}" . (substr($path, 0, 1) === "/" ? $path : "/{$path}");
 }
 
 function update_application(mysqli $db, int $applicationId): void
@@ -539,14 +592,7 @@ function submit_application(mysqli $db, string $jobCode): void
     );
 
     $applicationId = $db->insert_id;
-    $resume = save_uploaded_resume($applicationId, (string) ($data["resumeFileName"] ?? "resume.pdf"));
-    exec_stmt(
-        $db,
-        "INSERT INTO resumes (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes, parsing_status)
-         VALUES (?, ?, ?, ?, ?, 'pending')",
-        "isssi",
-        [$applicationId, $resume["originalName"], $resume["publicUrl"], $resume["mimeType"], $resume["size"]]
-    );
+    save_uploaded_documents($db, $applicationId, (string) ($data["resumeFileName"] ?? "resume.pdf"));
     create_score_breakdown($db, $applicationId, (int) $job["id"], $score);
     create_application_notifications($db, $applicationId, $fullName, (int) $job["id"], false);
     respond(["ok" => true, "applicationId" => $applicationId], 201);
@@ -625,22 +671,13 @@ function replace_existing_application(
             [$status, $eligibilityStatus, $score, "$fullName resubmitted an application and is ready for HR review.", $applicationId]
         );
 
-        $resume = save_uploaded_resume($applicationId, $fallbackResumeName);
         exec_stmt(
             $db,
-            "INSERT INTO resumes (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes, parsing_status)
-             VALUES (?, ?, ?, ?, ?, 'pending')
-             ON DUPLICATE KEY UPDATE
-               original_file_name = VALUES(original_file_name),
-               stored_file_path = VALUES(stored_file_path),
-               file_mime_type = VALUES(file_mime_type),
-               file_size_bytes = VALUES(file_size_bytes),
-               parsed_text = NULL,
-               parsing_status = 'pending',
-               uploaded_at = CURRENT_TIMESTAMP",
-            "isssi",
-            [$applicationId, $resume["originalName"], $resume["publicUrl"], $resume["mimeType"], $resume["size"]]
+            "DELETE FROM resumes WHERE application_id = ?",
+            "i",
+            [$applicationId]
         );
+        save_uploaded_documents($db, $applicationId, $fallbackResumeName);
 
         exec_stmt(
             $db,
@@ -739,8 +776,8 @@ function create_application_notifications(mysqli $db, int $applicationId, string
         ? "A candidate has resubmitted an application."
         : "A new candidate has submitted an application.";
 
-    $hrUsers = rows($db, "SELECT id FROM users WHERE role_id = 1 AND status = 'active'");
-    foreach ($hrUsers as $user) {
+    $recipients = rows($db, "SELECT id FROM users WHERE status = 'active'");
+    foreach ($recipients as $user) {
         exec_stmt(
             $db,
             "INSERT INTO notifications (user_id, related_application_id, notification_type, title, message)
@@ -879,50 +916,19 @@ function ordinal_submission_label(int $submissionNo): string
     return $submissionNo . $suffix . " Submission";
 }
 
-function save_uploaded_resume(int $applicationId, string $fallbackName): array
+function save_uploaded_documents(mysqli $db, int $applicationId, string $fallbackName): void
 {
     $fallbackName = basename($fallbackName) ?: "resume.pdf";
-    $legacy = [
-        "originalName" => $fallbackName,
-        "publicUrl" => "/uploads/resumes/pending.pdf",
-        "mimeType" => "application/pdf",
-        "size" => 0,
-    ];
 
     if (!isset($_FILES["resume"])) {
-        return $legacy;
-    }
-
-    $file = $_FILES["resume"];
-    if (!is_array($file) || (int) $file["error"] !== UPLOAD_ERR_OK) {
-        respond(["error" => "Resume upload failed"], 422);
-    }
-
-    $originalName = basename((string) $file["name"]);
-    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-    if ($extension !== "pdf") {
-        respond(["error" => "Resume must be a PDF file"], 422);
-    }
-
-    $size = (int) $file["size"];
-    if ($size <= 0 || $size > 5 * 1024 * 1024) {
-        respond(["error" => "Resume file size must be between 1 byte and 5 MB"], 422);
-    }
-
-    $mimeType = "application/pdf";
-    if (function_exists("finfo_open")) {
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        if ($finfo) {
-            $detectedType = finfo_file($finfo, (string) $file["tmp_name"]);
-            finfo_close($finfo);
-            if (is_string($detectedType) && $detectedType !== "") {
-                $mimeType = $detectedType;
-            }
-        }
-    }
-
-    if ($mimeType !== "application/pdf") {
-        respond(["error" => "Resume must be a PDF file"], 422);
+        exec_stmt(
+            $db,
+            "INSERT INTO resumes (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes, parsing_status)
+             VALUES (?, ?, '/uploads/resumes/pending.pdf', 'application/pdf', 0, 'pending')",
+            "is",
+            [$applicationId, $fallbackName]
+        );
+        return;
     }
 
     $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . "uploads" . DIRECTORY_SEPARATOR . "resumes";
@@ -930,22 +936,78 @@ function save_uploaded_resume(int $applicationId, string $fallbackName): array
         respond(["error" => "Unable to prepare resume upload folder"], 500);
     }
 
-    $storedName = sprintf("application-%d-%s.pdf", $applicationId, bin2hex(random_bytes(6)));
-    $destination = $uploadDir . DIRECTORY_SEPARATOR . $storedName;
-    if (!move_uploaded_file((string) $file["tmp_name"], $destination)) {
-        respond(["error" => "Unable to save uploaded resume"], 500);
-    }
-
     $scheme = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off") ? "https" : "http";
     $host = (string) ($_SERVER["HTTP_HOST"] ?? "localhost");
     $basePath = rtrim(str_replace("\\", "/", dirname((string) ($_SERVER["SCRIPT_NAME"] ?? "/uwc-hr-api/api.php"))), "/");
+    $allowedExtensions = ["pdf", "jpg", "jpeg", "png"];
+    $allowedMimeTypes = ["application/pdf", "image/jpeg", "image/png"];
 
-    return [
-        "originalName" => $originalName,
-        "publicUrl" => "{$scheme}://{$host}{$basePath}/uploads/resumes/{$storedName}",
-        "mimeType" => $mimeType,
-        "size" => $size,
-    ];
+    foreach (normalize_uploaded_files($_FILES["resume"]) as $file) {
+        if ((int) $file["error"] !== UPLOAD_ERR_OK) {
+            respond(["error" => "Application document upload failed"], 422);
+        }
+
+        $originalName = basename((string) $file["name"]);
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        if (!in_array($extension, $allowedExtensions, true)) {
+            respond(["error" => "Application documents must be PDF, JPG, JPEG, or PNG files"], 422);
+        }
+
+        $size = (int) $file["size"];
+        if ($size <= 0 || $size > 10 * 1024 * 1024) {
+            respond(["error" => "Application document file size must be between 1 byte and 10 MB"], 422);
+        }
+
+        $mimeType = (string) ($file["type"] ?? "application/octet-stream");
+        if (function_exists("finfo_open")) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo) {
+                $detectedType = finfo_file($finfo, (string) $file["tmp_name"]);
+                finfo_close($finfo);
+                if (is_string($detectedType) && $detectedType !== "") {
+                    $mimeType = $detectedType;
+                }
+            }
+        }
+
+        if (!in_array($mimeType, $allowedMimeTypes, true)) {
+            respond(["error" => "Application documents must be PDF, JPG, JPEG, or PNG files"], 422);
+        }
+
+        $storedName = sprintf("application-%d-%s.%s", $applicationId, bin2hex(random_bytes(6)), $extension === "jpeg" ? "jpg" : $extension);
+        $destination = $uploadDir . DIRECTORY_SEPARATOR . $storedName;
+        if (!move_uploaded_file((string) $file["tmp_name"], $destination)) {
+            respond(["error" => "Unable to save uploaded application document"], 500);
+        }
+
+        exec_stmt(
+            $db,
+            "INSERT INTO resumes (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes, parsing_status)
+             VALUES (?, ?, ?, ?, ?, 'pending')",
+            "isssi",
+            [$applicationId, $originalName, "{$scheme}://{$host}{$basePath}/uploads/resumes/{$storedName}", $mimeType, $size]
+        );
+    }
+}
+
+function normalize_uploaded_files(array $fileInput): array
+{
+    if (!isset($fileInput["name"]) || !is_array($fileInput["name"])) {
+        return [$fileInput];
+    }
+
+    $files = [];
+    foreach ($fileInput["name"] as $index => $name) {
+        $files[] = [
+            "name" => $name,
+            "type" => $fileInput["type"][$index] ?? "",
+            "tmp_name" => $fileInput["tmp_name"][$index] ?? "",
+            "error" => $fileInput["error"][$index] ?? UPLOAD_ERR_NO_FILE,
+            "size" => $fileInput["size"][$index] ?? 0,
+        ];
+    }
+
+    return $files;
 }
 
 function users(mysqli $db): void

@@ -19,6 +19,13 @@ import {
 } from "./ui/select";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
+import {
   Pagination,
   PaginationContent,
   PaginationItem,
@@ -70,6 +77,15 @@ interface ScoreBreakdownItem {
   badgeColor: string;
 }
 
+interface CandidateDocument {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  mimeType: string;
+  fileSize: number;
+  uploadedAt?: string;
+}
+
 interface Candidate {
   id: string;
   applicationId?: string;
@@ -89,6 +105,7 @@ interface Candidate {
   noticePeriod?: string;
   skills: string[];
   resumeUrl: string;
+  documents: CandidateDocument[];
   summary: string;
   scoreBreakdown: ScoreBreakdownItem[];
   score?: number;
@@ -200,6 +217,14 @@ type ApiCandidate = {
   score: string | number | null;
   summary: string | null;
   resumeUrl: string | null;
+  documents?: {
+    id: number;
+    fileName: string;
+    fileUrl: string;
+    mimeType: string;
+    fileSize: string | number;
+    uploadedAt: string;
+  }[];
   skills: { name: string }[];
   scoreBreakdown: {
     id: number;
@@ -289,6 +314,14 @@ const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
       : "-",
     skills: (candidate.skills ?? []).map((skill) => skill.name),
     resumeUrl: candidate.resumeUrl || "#",
+    documents: (candidate.documents ?? []).map((document) => ({
+      id: String(document.id),
+      fileName: document.fileName,
+      fileUrl: document.fileUrl,
+      mimeType: document.mimeType,
+      fileSize: Number(document.fileSize ?? 0),
+      uploadedAt: document.uploadedAt,
+    })),
     summary: candidate.summary || "This candidate has been evaluated by the system and is ready for HR review.",
     scoreBreakdown,
     score: displayScore,
@@ -511,6 +544,15 @@ export function CandidateList() {
       cgpa: "-",
       skills: ["Pending analysis"],
       resumeUrl: URL.createObjectURL(file),
+      documents: [
+        {
+          id: Date.now().toString(),
+          fileName: file.name,
+          fileUrl: URL.createObjectURL(file),
+          mimeType: file.type,
+          fileSize: file.size,
+        },
+      ],
       summary:
         "This candidate resume was uploaded internally by HR. The resume will be analysed by the system and included in the candidate ranking list.",
       scoreBreakdown,
@@ -754,13 +796,26 @@ export function CandidateList() {
     toast.success(`Rejection email sent to ${candidate.name}`);
   };
 
-  const downloadResume = (candidate: Candidate) => {
+  const [documentCandidate, setDocumentCandidate] =
+    useState<Candidate | null>(null);
+
+  const openDocuments = (candidate: Candidate) => {
+    if (candidate.documents.length === 1) {
+      window.open(candidate.documents[0].fileUrl, "_blank");
+      return;
+    }
+
+    if (candidate.documents.length > 1) {
+      setDocumentCandidate(candidate);
+      return;
+    }
+
     if (candidate.resumeUrl && candidate.resumeUrl !== "#") {
       window.open(candidate.resumeUrl, "_blank");
       return;
     }
 
-    toast.success(`Downloading ${candidate.name}'s resume...`);
+    toast.error(`No uploaded documents found for ${candidate.name}`);
   };
 
   const renderSummary = (
@@ -1448,7 +1503,7 @@ export function CandidateList() {
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          downloadResume(candidate)
+                          openDocuments(candidate)
                         }
                       >
                         <FileText className="w-4 h-4 mr-2" />
@@ -1558,6 +1613,54 @@ export function CandidateList() {
           </PaginationContent>
         </Pagination>
       )}
+
+      <Dialog
+        open={Boolean(documentCandidate)}
+        onOpenChange={(open) => {
+          if (!open) setDocumentCandidate(null);
+        }}
+      >
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-xl overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Application Documents</DialogTitle>
+            <DialogDescription>
+              View all files uploaded by {documentCandidate?.name}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-w-0 space-y-3 overflow-y-auto pr-1 sm:max-h-[60vh]">
+            {documentCandidate?.documents.map((document) => (
+              <div
+                key={document.id}
+                className="flex w-full min-w-0 items-center justify-between gap-3 rounded-lg border border-slate-200 p-4"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-blue-100">
+                    <FileText className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-900">
+                      {document.fileName}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">
+                      {document.mimeType} ·{" "}
+                      {(document.fileSize / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => window.open(document.fileUrl, "_blank")}
+                >
+                  Open
+                </Button>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {interviewPopupCandidate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
