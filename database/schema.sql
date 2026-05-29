@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS applications (
   job_id INT UNSIGNED NOT NULL,
   candidate_id INT UNSIGNED NOT NULL,
   application_link_id INT UNSIGNED NULL,
+  assigned_hr_user_id INT UNSIGNED NULL,
   application_status ENUM('new', 'reviewed', 'shortlisted', 'interview', 'rejected', 'filtered_out') NOT NULL DEFAULT 'new',
   is_shortlisted TINYINT(1) NOT NULL DEFAULT 0,
   interview_sent_at DATETIME NULL,
@@ -150,7 +151,9 @@ CREATE TABLE IF NOT EXISTS applications (
   CONSTRAINT fk_applications_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
   CONSTRAINT fk_applications_candidate FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
   CONSTRAINT fk_applications_link FOREIGN KEY (application_link_id) REFERENCES application_links(id) ON DELETE SET NULL,
+  CONSTRAINT fk_applications_assigned_hr FOREIGN KEY (assigned_hr_user_id) REFERENCES users(id) ON DELETE SET NULL,
   UNIQUE KEY uq_applications_job_candidate (job_id, candidate_id),
+  INDEX idx_applications_assigned_hr (assigned_hr_user_id),
   INDEX idx_applications_job_status (job_id, application_status),
   INDEX idx_applications_ranking (job_id, eligibility_status, total_score)
 ) ENGINE=InnoDB;
@@ -203,6 +206,7 @@ CREATE TABLE IF NOT EXISTS application_submission_history (
   previous_eligibility_status ENUM('eligible', 'filtered_out', 'pending') NOT NULL,
   previous_score DECIMAL(5,2) NULL,
   previous_rank_no INT UNSIGNED NULL,
+  previous_assigned_hr_user_id INT UNSIGNED NULL,
   previous_resume_file_name VARCHAR(255) NULL,
   previous_resume_url VARCHAR(500) NULL,
   previous_ai_summary TEXT NULL,
@@ -211,6 +215,7 @@ CREATE TABLE IF NOT EXISTS application_submission_history (
   CONSTRAINT fk_submission_history_candidate FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
   CONSTRAINT fk_submission_history_application FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE,
   CONSTRAINT fk_submission_history_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+  CONSTRAINT fk_submission_history_assigned_hr FOREIGN KEY (previous_assigned_hr_user_id) REFERENCES users(id) ON DELETE SET NULL,
   INDEX idx_submission_history_application (application_id, recorded_at)
 ) ENGINE=InnoDB;
 
@@ -221,6 +226,7 @@ CREATE TABLE IF NOT EXISTS email_templates (
   subject VARCHAR(255) NOT NULL,
   body TEXT NOT NULL,
   attachment_path VARCHAR(500) NULL,
+  attachment_file_name VARCHAR(255) NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_by_user_id INT UNSIGNED NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -410,6 +416,12 @@ ON DUPLICATE KEY UPDATE
   rank_no = VALUES(rank_no),
   ai_summary = VALUES(ai_summary);
 
+UPDATE applications a
+JOIN jobs j ON j.id = a.job_id
+SET a.assigned_hr_user_id = j.created_by_user_id
+WHERE a.assigned_hr_user_id IS NULL
+  AND a.reviewed_at IS NOT NULL;
+
 DELETE FROM resumes
 WHERE original_file_name IN ('alice-chen-resume.pdf', 'daniel-tan-resume.pdf');
 
@@ -449,15 +461,15 @@ INSERT INTO email_templates (template_key, template_name, subject, body, created
   (
     'interview_invitation',
     'Interview Invitation',
-    'Interview Invitation for {{job_title}}',
-    'Dear {{candidate_name}},\n\nThank you for applying for {{job_title}} at UWC Berhad. We would like to invite you for an interview on {{interview_datetime}}.\n\nBest regards,\nUWC HR Team',
+    'Interview invitation for {jobTitle}',
+    'Dear {candidateName},\n\nWe would like to invite you for an interview for the {jobTitle} position.\n\nAvailable interview date and time options: {interviewDateOptions}\n\nPlease reply to this email with your preferred interview time. Also, please complete the attached file and reply to this email before attending the interview.\n\nRegards,\nUWC Berhad',
     2
   ),
   (
     'reject_application',
     'Reject Application',
-    'Application Update for {{job_title}}',
-    'Dear {{candidate_name}},\n\nThank you for applying for {{job_title}} at UWC Berhad. After careful review, we regret to inform you that your application will not proceed at this time.\n\nBest regards,\nUWC HR Team',
+    'Update on your job application',
+    'Dear {candidateName},\n\nThank you for your interest in {jobTitle}. After careful review, we regret to inform you that you have not been selected for this role.\n\nWe appreciate your time and interest in {companyName}.\n\nRegards,\n{companyName}',
     2
   )
 ON DUPLICATE KEY UPDATE

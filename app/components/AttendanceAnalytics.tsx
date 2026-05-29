@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch } from "../lib/api";
+import { LoadingState } from "./LoadingState";
 
 type AttendanceRecord = {
   candidateId: string;
@@ -43,8 +44,10 @@ export function AttendanceAnalytics() {
   const [attendanceData, setAttendanceData] = useState<
     AttendanceRecord[]
   >([]);
+  const [isLoadingAttendance, setIsLoadingAttendance] = useState(true);
 
   useEffect(() => {
+    setIsLoadingAttendance(true);
     apiFetch<{ records: AttendanceRecord[] }>(
       "/attendance-analytics",
     )
@@ -55,7 +58,8 @@ export function AttendanceAnalytics() {
             ? error.message
             : "Failed to load attendance analytics",
         ),
-      );
+      )
+      .finally(() => setIsLoadingAttendance(false));
   }, []);
 
   // Calculate statistics
@@ -154,6 +158,10 @@ export function AttendanceAnalytics() {
         </div>
       </div>
 
+      {isLoadingAttendance ? (
+        <LoadingState title="Loading attendance analytics" />
+      ) : (
+        <>
       {/* Key Metrics - Visibility pattern */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         
@@ -397,6 +405,8 @@ export function AttendanceAnalytics() {
           </Card>
         </TabsContent>
       </Tabs>
+        </>
+      )}
     </PageLayout>
   );
 }

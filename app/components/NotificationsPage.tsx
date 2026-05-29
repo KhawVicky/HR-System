@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Bell, CheckCircle2, Mail } from "lucide-react";
+import { getCompactPageItems } from "../lib/pagination";
 import { PageLayout } from "./PageLayout";
 import { Card, CardContent } from "./ui/card";
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
 } from "./ui/pagination";
 import { apiFetch, getStoredUser, NotificationItem, NotificationResponse } from "../lib/api";
+import { LoadingState } from "./LoadingState";
 
 const NOTIFICATIONS_PER_PAGE = 10;
 
@@ -87,11 +90,7 @@ export function NotificationsPage() {
     >
       <div className="space-y-3">
         {loading ? (
-          <Card>
-            <CardContent className="p-8 text-slate-500">
-              Loading notifications...
-            </CardContent>
-          </Card>
+          <LoadingState title="Loading notifications" />
         ) : items.length > 0 ? (
           <>
             {visibleItems.map((notification) => (
@@ -149,22 +148,30 @@ export function NotificationsPage() {
                       }}
                     />
                   </PaginationItem>
-                  {Array.from({ length: pageCount }, (_, index) => index + 1).map(
-                    (pageNumber) => (
-                      <PaginationItem key={pageNumber}>
+                  {getCompactPageItems(page, pageCount).map((item) => {
+                    if (typeof item === "string") {
+                      return (
+                        <PaginationItem key={item}>
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      );
+                    }
+
+                    return (
+                      <PaginationItem key={item}>
                         <PaginationLink
                           href="#"
-                          isActive={pageNumber === page}
+                          isActive={item === page}
                           onClick={(event) => {
                             event.preventDefault();
-                            setPage(pageNumber);
+                            setPage(item);
                           }}
                         >
-                          {pageNumber}
+                          {item}
                         </PaginationLink>
                       </PaginationItem>
-                    ),
-                  )}
+                    );
+                  })}
                   <PaginationItem>
                     <PaginationNext
                       href="#"

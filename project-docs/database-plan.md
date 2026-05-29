@@ -54,10 +54,11 @@ Current local status:
 - One job has one application link.
 - One candidate can apply to many jobs.
 - One application belongs to one job and one candidate.
+- One application can be assigned to one responsible HR user through `applications.assigned_hr_user_id`.
 - One application can have multiple uploaded document records in `resumes`.
 - One application stores the official total score used by the ranking list.
 - One application has many score breakdown records.
-- Duplicate submissions for the same job archive previous application/resume state in `application_submission_history`.
+- Duplicate submissions for the same job archive previous application/resume/assigned HR state in `application_submission_history`.
 - One application can have email logs for interview or reject actions.
 - Internal notification messages are stored in `notifications` and retained for 90 days.
 

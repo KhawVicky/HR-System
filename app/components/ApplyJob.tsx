@@ -33,6 +33,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { ApiError, apiFetch, type JobSummary } from "../lib/api";
+import { LoadingState } from "./LoadingState";
 
 type JobItem = {
   id: string;
@@ -78,6 +79,7 @@ function canPreview(file: File) {
 export function ApplyJob() {
   const { jobCode } = useParams();
   const [jobs, setJobs] = useState<JobItem[]>([]);
+  const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [formData, setFormData] = useState({
     selectedJobId: "",
     fullName: "",
@@ -106,6 +108,7 @@ export function ApplyJob() {
   );
 
   useEffect(() => {
+    setIsLoadingJobs(true);
     const loadJobs = jobCode
       ? apiFetch<{
           job: Pick<
@@ -138,7 +141,8 @@ export function ApplyJob() {
             ? error.message
             : "Failed to load jobs",
         ),
-      );
+      )
+      .finally(() => setIsLoadingJobs(false));
   }, [jobCode]);
 
   useEffect(() => {
@@ -500,6 +504,9 @@ export function ApplyJob() {
           </p>
         </div>
 
+        {isLoadingJobs ? (
+          <LoadingState title="Loading application form" />
+        ) : (
         <Card className="rounded-2xl border-slate-200 shadow-sm">
           <CardHeader>
             <CardTitle>Application Form</CardTitle>
@@ -870,6 +877,7 @@ export function ApplyJob() {
             </form>
           </CardContent>
         </Card>
+        )}
       </main>
 
       <AlertDialog

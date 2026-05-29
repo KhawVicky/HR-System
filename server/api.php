@@ -51,6 +51,12 @@ try {
         users($mysqli);
     } elseif ($method === "POST" && route_is($segments, ["users"])) {
         create_user($mysqli);
+    } elseif ($method === "GET" && route_is($segments, ["email-templates"])) {
+        email_templates($mysqli);
+    } elseif ($method === "POST" && route_is($segments, ["email-templates"])) {
+        update_email_templates($mysqli);
+    } elseif ($method === "POST" && route_is($segments, ["email-templates", "interview-attachment"])) {
+        upload_interview_attachment($mysqli);
     } elseif ($method === "GET" && route_is($segments, ["notifications"])) {
         notifications($mysqli);
     } elseif ($method === "PATCH" && route_is($segments, ["notifications", "read"])) {
@@ -274,6 +280,11 @@ function job_candidates(mysqli $db, int $jobId): void
           a.application_status AS status,
           a.is_shortlisted AS isShortlisted,
           a.interview_sent_at AS interviewSentAt,
+          a.assigned_hr_user_id AS assignedHrUserId,
+          assigned_user.full_name AS assignedHrName,
+          latest_email.email_type AS lastEmailType,
+          latest_email.sent_at AS lastEmailSentAt,
+          email_sender.full_name AS lastEmailSentBy,
           a.eligibility_status AS eligibilityStatus,
           a.total_score AS score,
           a.ai_summary AS summary,
@@ -298,6 +309,18 @@ function job_candidates(mysqli $db, int $jobId): void
           ) AS currentSubmissionNo
         FROM applications a
         JOIN candidates c ON c.id = a.candidate_id
+        LEFT JOIN users assigned_user ON assigned_user.id = a.assigned_hr_user_id
+        LEFT JOIN (
+          SELECT el.*
+          FROM email_logs el
+          JOIN (
+            SELECT application_id, MAX(id) AS latest_email_id
+            FROM email_logs
+            WHERE status = 'sent'
+            GROUP BY application_id
+          ) latest ON latest.latest_email_id = el.id
+        ) latest_email ON latest_email.application_id = a.id
+        LEFT JOIN users email_sender ON email_sender.id = latest_email.sent_by_user_id
         WHERE a.job_id = ?
         ORDER BY
           CASE WHEN a.rank_no IS NULL THEN 999999 ELSE a.rank_no END,
@@ -470,24 +493,24 @@ function update_application(mysqli $db, int $applicationId): void
     }
 
     if ($status === "shortlisted") {
-        exec_stmt($db, "UPDATE applications SET is_shortlisted = 1, application_status = IF(application_status = 'interview', application_status, 'shortlisted'), reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
+        exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), is_shortlisted = 1, application_status = IF(application_status = 'interview', application_status, 'shortlisted'), reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
     } elseif ($status === "reviewed") {
-        exec_stmt($db, "UPDATE applications SET is_shortlisted = 0, application_status = IF(application_status = 'interview', application_status, 'reviewed'), reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
+        exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), is_shortlisted = 0, application_status = IF(application_status = 'interview', application_status, 'reviewed'), reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
     } elseif ($status === "interview") {
-        exec_stmt($db, "UPDATE applications SET is_shortlisted = 1, interview_sent_at = COALESCE(interview_sent_at, NOW()), application_status = 'interview', reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
         if ($emailAction) {
             create_email_sent_notification($db, $applicationId, $actionUserId, "interview", $interviewDateTime);
         }
+        exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), is_shortlisted = 1, interview_sent_at = COALESCE(interview_sent_at, NOW()), application_status = 'interview', reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
     } elseif ($status === "rejected") {
-        exec_stmt($db, "UPDATE applications SET application_status = 'rejected', is_shortlisted = 0, reviewed_at = NOW() WHERE id = ?", "i", [$applicationId]);
         if ($emailAction) {
             create_email_sent_notification($db, $applicationId, $actionUserId, "reject", "");
         }
+        exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), application_status = 'rejected', is_shortlisted = 0, reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
     } else {
-        exec_stmt($db, "UPDATE applications SET application_status = ?, reviewed_at = NOW() WHERE id = ?", "si", [$status, $applicationId]);
+        exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), application_status = ?, reviewed_at = NOW() WHERE id = ?", "isi", [$actionUserId, $status, $applicationId]);
     }
 
-    $updated = row($db, "SELECT application_status, is_shortlisted, interview_sent_at FROM applications WHERE id = ?", "i", [$applicationId]);
+    $updated = row($db, "SELECT application_status, is_shortlisted, interview_sent_at, assigned_hr_user_id FROM applications WHERE id = ?", "i", [$applicationId]);
     respond(["ok" => true, "application" => $updated ?: []]);
 }
 
@@ -616,6 +639,7 @@ function replace_existing_application(
            a.eligibility_status,
            a.total_score,
            a.rank_no,
+           a.assigned_hr_user_id,
            a.ai_summary,
            a.submitted_at,
            r.original_file_name AS resumeFileName,
@@ -640,10 +664,10 @@ function replace_existing_application(
             "INSERT INTO application_submission_history (
                candidate_id, application_id, job_id, submission_no,
                previous_application_status, previous_eligibility_status,
-               previous_score, previous_rank_no, previous_resume_file_name,
+               previous_score, previous_rank_no, previous_assigned_hr_user_id, previous_resume_file_name,
                previous_resume_url, previous_ai_summary, original_submitted_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            "iiiissdissss",
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "iiiissdiissss",
             [
                 $candidateId,
                 $applicationId,
@@ -653,6 +677,7 @@ function replace_existing_application(
                 (string) $existing["eligibility_status"],
                 $existing["total_score"] === null ? null : (float) $existing["total_score"],
                 $existing["rank_no"] === null ? null : (int) $existing["rank_no"],
+                $existing["assigned_hr_user_id"] === null ? null : (int) $existing["assigned_hr_user_id"],
                 (string) ($existing["resumeFileName"] ?? ""),
                 (string) ($existing["resumeUrl"] ?? ""),
                 (string) ($existing["ai_summary"] ?? ""),
@@ -664,7 +689,7 @@ function replace_existing_application(
             $db,
             "UPDATE applications
              SET application_status = ?, is_shortlisted = 0, interview_sent_at = NULL,
-                 eligibility_status = ?, total_score = ?, rank_no = NULL,
+                 assigned_hr_user_id = NULL, eligibility_status = ?, total_score = ?, rank_no = NULL,
                  ai_summary = ?, submitted_at = NOW(), reviewed_at = NULL
              WHERE id = ?",
             "ssdsi",
@@ -791,27 +816,28 @@ function create_application_notifications(mysqli $db, int $applicationId, string
 function create_email_sent_notification(mysqli $db, int $applicationId, int $userId, string $emailType, string $interviewDateTime): void
 {
     if ($userId <= 0 || !in_array($emailType, ["interview", "reject"], true)) {
-        return;
+        throw new RuntimeException("Valid HR user is required to send email");
     }
 
     cleanup_old_notifications($db);
 
     $application = row(
         $db,
-        "SELECT c.full_name AS candidateName, c.email AS candidateEmail, j.title AS jobTitle
+        "SELECT c.full_name AS candidateName, c.email AS candidateEmail, j.title AS jobTitle, u.full_name AS senderName, u.email AS senderEmail
          FROM applications a
          JOIN candidates c ON c.id = a.candidate_id
          JOIN jobs j ON j.id = a.job_id
+         JOIN users u ON u.id = ?
          WHERE a.id = ?",
-        "i",
-        [$applicationId]
+        "ii",
+        [$userId, $applicationId]
     );
     if (!$application) {
-        return;
+        throw new RuntimeException("Application or sender not found");
     }
 
     $templateKey = $emailType === "interview" ? "interview_invitation" : "reject_application";
-    $template = row($db, "SELECT id, subject, body FROM email_templates WHERE template_key = ? AND is_active = 1 LIMIT 1", "s", [$templateKey]);
+    $template = row($db, "SELECT id, subject, body, attachment_path AS attachmentPath, attachment_file_name AS attachmentFileName FROM email_templates WHERE template_key = ? AND is_active = 1 LIMIT 1", "s", [$templateKey]);
     $title = $emailType === "interview" ? "Interview Email Sent" : "Rejection Email Sent";
     $message = $emailType === "interview"
         ? "The interview email has been sent successfully."
@@ -819,6 +845,37 @@ function create_email_sent_notification(mysqli $db, int $applicationId, int $use
     $subject = (string) ($template["subject"] ?? $title);
     $body = (string) ($template["body"] ?? $message);
     $scheduledAt = $emailType === "interview" && $interviewDateTime !== "" ? str_replace("T", " ", $interviewDateTime) : null;
+    $replacements = [
+        "{{candidate_name}}" => (string) $application["candidateName"],
+        "{{job_title}}" => (string) $application["jobTitle"],
+        "{{interview_datetime}}" => $interviewDateTime !== "" ? $interviewDateTime : "a scheduled time to be confirmed",
+        "{candidateName}" => (string) $application["candidateName"],
+        "{jobTitle}" => (string) $application["jobTitle"],
+        "{companyName}" => "UWC Berhad",
+        "{interviewDate}" => $interviewDateTime !== "" ? $interviewDateTime : "{interviewDateOptions}",
+        "{interviewDateOptions}" => $interviewDateTime !== "" ? $interviewDateTime : "{interviewDateOptions}",
+    ];
+    $subject = strtr($subject, $replacements);
+    $body = str_replace("\\n", "\n", strtr($body, $replacements));
+    if ($emailType === "interview") {
+        $subject = "Interview invitation for " . (string) $application["jobTitle"];
+        $body = "Dear " . (string) $application["candidateName"] . ",\n\n"
+            . "We would like to invite you for an interview for the " . (string) $application["jobTitle"] . " position.\n\n"
+            . "Available interview date and time options: " . ($interviewDateTime !== "" ? $interviewDateTime : "{interviewDateOptions}") . "\n\n"
+            . "Please reply to this email with your preferred interview time. Also, please complete the attached file and reply to this email before attending the interview.\n\n"
+            . "Regards,\nUWC Berhad";
+    }
+
+    send_recruitment_email(
+        (string) $application["candidateEmail"],
+        (string) $application["candidateName"],
+        $subject,
+        $body,
+        (string) $application["senderEmail"],
+        (string) $application["senderName"],
+        $emailType === "interview" ? resolve_attachment_path((string) ($template["attachmentPath"] ?? "")) : null,
+        $emailType === "interview" ? (string) ($template["attachmentFileName"] ?? "") : ""
+    );
 
     exec_stmt(
         $db,
@@ -846,6 +903,323 @@ function create_email_sent_notification(mysqli $db, int $applicationId, int $use
         "iiss",
         [$userId, $applicationId, $title, $message]
     );
+}
+
+function upload_interview_attachment(mysqli $db): void
+{
+    if (!isset($_FILES["attachment"]) || !is_array($_FILES["attachment"])) {
+        respond(["error" => "Attachment file is required"], 422);
+    }
+
+    $file = $_FILES["attachment"];
+    if ((int) $file["error"] !== UPLOAD_ERR_OK) {
+        respond(["error" => "Attachment upload failed"], 422);
+    }
+
+    $originalName = basename((string) $file["name"]);
+    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    if (!in_array($extension, ["pdf", "doc", "docx"], true)) {
+        respond(["error" => "Attachment must be PDF, DOC, or DOCX"], 422);
+    }
+
+    $size = (int) $file["size"];
+    if ($size <= 0 || $size > 10 * 1024 * 1024) {
+        respond(["error" => "Attachment size must be between 1 byte and 10 MB"], 422);
+    }
+
+    $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . "uploads" . DIRECTORY_SEPARATOR . "email-attachments";
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true)) {
+        respond(["error" => "Unable to prepare attachment upload folder"], 500);
+    }
+
+    $storedName = sprintf("interview-attachment-%s.%s", bin2hex(random_bytes(6)), $extension);
+    $destination = $uploadDir . DIRECTORY_SEPARATOR . $storedName;
+    if (!move_uploaded_file((string) $file["tmp_name"], $destination)) {
+        respond(["error" => "Unable to save uploaded attachment"], 500);
+    }
+
+    $relativePath = "/uploads/email-attachments/{$storedName}";
+    exec_stmt(
+        $db,
+        "UPDATE email_templates SET attachment_path = ?, attachment_file_name = ?, updated_at = CURRENT_TIMESTAMP WHERE template_key = 'interview_invitation'",
+        "ss",
+        [$relativePath, $originalName]
+    );
+
+    respond([
+        "ok" => true,
+        "fileName" => $originalName,
+        "attachmentPath" => $relativePath,
+    ]);
+}
+
+function email_templates(mysqli $db): void
+{
+    $templates = rows(
+        $db,
+        "SELECT
+           template_key AS templateKey,
+           subject,
+           body,
+           is_active AS isActive,
+           attachment_path AS attachmentPath,
+           attachment_file_name AS attachmentFileName
+         FROM email_templates
+         WHERE template_key IN ('interview_invitation', 'reject_application')"
+    );
+
+    $mapped = [];
+    foreach ($templates as $template) {
+        $mapped[(string) $template["templateKey"]] = $template;
+    }
+
+    respond(["templates" => $mapped]);
+}
+
+function update_email_templates(mysqli $db): void
+{
+    $data = input_json();
+    $interview = is_array($data["interview"] ?? null) ? $data["interview"] : [];
+    $reject = is_array($data["reject"] ?? null) ? $data["reject"] : [];
+
+    update_email_template_row(
+        $db,
+        "interview_invitation",
+        "Interview Invitation",
+        (string) ($interview["subject"] ?? ""),
+        (string) ($interview["body"] ?? ""),
+        filter_var($interview["enabled"] ?? true, FILTER_VALIDATE_BOOLEAN)
+    );
+    update_email_template_row(
+        $db,
+        "reject_application",
+        "Reject Application",
+        (string) ($reject["subject"] ?? ""),
+        (string) ($reject["body"] ?? ""),
+        filter_var($reject["enabled"] ?? true, FILTER_VALIDATE_BOOLEAN)
+    );
+
+    respond(["ok" => true]);
+}
+
+function update_email_template_row(mysqli $db, string $key, string $name, string $subject, string $body, bool $enabled): void
+{
+    if ($subject === "" || $body === "") {
+        respond(["error" => "Email template subject and message are required"], 422);
+    }
+
+    exec_stmt(
+        $db,
+        "INSERT INTO email_templates (template_key, template_name, subject, body, is_active, created_by_user_id)
+         VALUES (?, ?, ?, ?, ?, 2)
+         ON DUPLICATE KEY UPDATE
+           template_name = VALUES(template_name),
+           subject = VALUES(subject),
+           body = VALUES(body),
+           is_active = VALUES(is_active),
+           updated_at = CURRENT_TIMESTAMP",
+        "ssssi",
+        [$key, $name, $subject, $body, $enabled ? 1 : 0]
+    );
+}
+
+function mail_config(): array
+{
+    $configPath = __DIR__ . DIRECTORY_SEPARATOR . "mail-config.local.php";
+    if (!is_file($configPath)) {
+        throw new RuntimeException("Mail config is missing");
+    }
+
+    $config = require $configPath;
+    if (!is_array($config) || empty($config["enabled"])) {
+        throw new RuntimeException("Mail sending is not configured");
+    }
+
+    return $config;
+}
+
+function send_recruitment_email(string $toEmail, string $toName, string $subject, string $body, string $replyToEmail, string $replyToName, ?string $attachmentPath = null, string $attachmentFileName = ""): void
+{
+    $config = mail_config();
+    smtp_send_mail(
+        $config,
+        $toEmail,
+        $toName,
+        $subject,
+        $body,
+        $replyToEmail,
+        $replyToName,
+        $attachmentPath,
+        $attachmentFileName
+    );
+}
+
+function smtp_send_mail(array $config, string $toEmail, string $toName, string $subject, string $body, string $replyToEmail, string $replyToName, ?string $attachmentPath = null, string $attachmentFileName = ""): void
+{
+    $host = (string) ($config["host"] ?? "");
+    $port = (int) ($config["port"] ?? 587);
+    $username = (string) ($config["username"] ?? "");
+    $password = (string) ($config["password"] ?? "");
+    $fromEmail = (string) ($config["from_email"] ?? $username);
+    $fromName = (string) ($config["from_name"] ?? "UWC Recruitment");
+
+    if ($host === "" || $username === "" || $password === "" || $fromEmail === "") {
+        throw new RuntimeException("Mail config is incomplete");
+    }
+
+    $context = stream_context_create([
+        "ssl" => [
+            "verify_peer" => (bool) ($config["verify_peer"] ?? true),
+            "verify_peer_name" => (bool) ($config["verify_peer"] ?? true),
+            "allow_self_signed" => !(bool) ($config["verify_peer"] ?? true),
+        ],
+    ]);
+    $socket = @stream_socket_client("tcp://{$host}:{$port}", $errno, $errstr, 20, STREAM_CLIENT_CONNECT, $context);
+    if (!$socket) {
+        throw new RuntimeException("Unable to connect to SMTP server: {$errstr}");
+    }
+
+    stream_set_timeout($socket, 20);
+
+    try {
+        smtp_expect($socket, [220]);
+        smtp_command($socket, "EHLO localhost", [250]);
+
+        if (($config["encryption"] ?? "tls") === "tls") {
+            smtp_command($socket, "STARTTLS", [220]);
+            if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                throw new RuntimeException("Unable to start SMTP TLS encryption");
+            }
+            smtp_command($socket, "EHLO localhost", [250]);
+        }
+
+        smtp_command($socket, "AUTH LOGIN", [334]);
+        smtp_command($socket, base64_encode($username), [334]);
+        smtp_command($socket, base64_encode($password), [235]);
+        smtp_command($socket, "MAIL FROM:<{$fromEmail}>", [250]);
+        smtp_command($socket, "RCPT TO:<{$toEmail}>", [250, 251]);
+        smtp_command($socket, "DATA", [354]);
+
+        $headers = [
+            "From: " . mime_header_name($fromName) . " <{$fromEmail}>",
+            "To: " . mime_header_name($toName) . " <{$toEmail}>",
+            "Reply-To: " . mime_header_name($replyToName) . " <{$replyToEmail}>",
+            "Subject: " . mime_header_text($subject),
+            "MIME-Version: 1.0",
+        ];
+        $messageBody = build_email_message_body($body, $attachmentPath, $headers, $attachmentFileName);
+        $message = implode("\r\n", $headers) . "\r\n\r\n" . $messageBody . "\r\n.";
+        smtp_command($socket, $message, [250]);
+        smtp_command($socket, "QUIT", [221]);
+    } finally {
+        fclose($socket);
+    }
+}
+
+function build_email_message_body(string $body, ?string $attachmentPath, array &$headers, string $attachmentFileName = ""): string
+{
+    if ($attachmentPath === null || $attachmentPath === "" || !is_file($attachmentPath)) {
+        $headers[] = "Content-Type: text/plain; charset=UTF-8";
+        $headers[] = "Content-Transfer-Encoding: 8bit";
+        return normalize_smtp_body($body);
+    }
+
+    $boundary = "uwc_boundary_" . bin2hex(random_bytes(8));
+    $headers[] = "Content-Type: multipart/mixed; boundary=\"{$boundary}\"";
+    $fileName = $attachmentFileName !== "" ? $attachmentFileName : basename($attachmentPath);
+    $mimeType = attachment_mime_type($attachmentPath);
+    $encodedFile = chunk_split(base64_encode((string) file_get_contents($attachmentPath)));
+
+    return "--{$boundary}\r\n"
+        . "Content-Type: text/plain; charset=UTF-8\r\n"
+        . "Content-Transfer-Encoding: 8bit\r\n\r\n"
+        . normalize_smtp_body($body) . "\r\n"
+        . "--{$boundary}\r\n"
+        . "Content-Type: {$mimeType}; name=\"" . addcslashes($fileName, "\"\\") . "\"\r\n"
+        . "Content-Transfer-Encoding: base64\r\n"
+        . "Content-Disposition: attachment; filename=\"" . addcslashes($fileName, "\"\\") . "\"\r\n\r\n"
+        . $encodedFile . "\r\n"
+        . "--{$boundary}--";
+}
+
+function resolve_attachment_path(string $path): ?string
+{
+    if ($path === "") {
+        return null;
+    }
+
+    if (preg_match("#^https?://#i", $path)) {
+        return null;
+    }
+
+    $normalized = str_replace(["/", "\\"], DIRECTORY_SEPARATOR, ltrim($path, "/\\"));
+    $fullPath = __DIR__ . DIRECTORY_SEPARATOR . $normalized;
+    return is_file($fullPath) ? $fullPath : null;
+}
+
+function attachment_mime_type(string $path): string
+{
+    if (function_exists("finfo_open")) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo) {
+            $detectedType = finfo_file($finfo, $path);
+            finfo_close($finfo);
+            if (is_string($detectedType) && $detectedType !== "") {
+                return $detectedType;
+            }
+        }
+    }
+
+    return "application/octet-stream";
+}
+
+function smtp_command($socket, string $command, array $expectedCodes): string
+{
+    fwrite($socket, $command . "\r\n");
+    return smtp_expect($socket, $expectedCodes);
+}
+
+function smtp_expect($socket, array $expectedCodes): string
+{
+    $response = "";
+    do {
+        $line = fgets($socket, 515);
+        if ($line === false) {
+            throw new RuntimeException("SMTP server did not respond");
+        }
+        $response .= $line;
+    } while (isset($line[3]) && $line[3] === "-");
+
+    $code = (int) substr($response, 0, 3);
+    if (!in_array($code, $expectedCodes, true)) {
+        throw new RuntimeException("SMTP error: " . trim($response));
+    }
+
+    return $response;
+}
+
+function normalize_smtp_body(string $body): string
+{
+    $body = preg_replace("/\r\n|\r|\n/", "\r\n", $body) ?? $body;
+    return preg_replace("/^\./m", "..", $body) ?? $body;
+}
+
+function mime_header_text(string $value): string
+{
+    if (!function_exists("mb_encode_mimeheader")) {
+        return $value;
+    }
+
+    return mb_encode_mimeheader($value, "UTF-8", "B", "\r\n");
+}
+
+function mime_header_name(string $value): string
+{
+    if ($value === "") {
+        return "";
+    }
+
+    return mime_header_text($value);
 }
 
 function notifications(mysqli $db): void
@@ -1123,8 +1497,7 @@ function hr_efficiency(mysqli $db): void
           SUM(CASE WHEN a.application_status IN ('shortlisted', 'interview') THEN 1 ELSE 0 END) AS shortlisted,
           SUM(CASE WHEN a.application_status = 'rejected' THEN 1 ELSE 0 END) AS rejected
          FROM users u
-         LEFT JOIN jobs j ON j.created_by_user_id = u.id
-         LEFT JOIN applications a ON a.job_id = j.id
+         LEFT JOIN applications a ON a.assigned_hr_user_id = u.id
          WHERE u.role_id IN (1, 2)
          GROUP BY u.id
          ORDER BY totalCandidates DESC"
@@ -1137,11 +1510,11 @@ function hr_efficiency(mysqli $db): void
           DATE(a.submitted_at) AS applicationDate,
           DATE(COALESCE(a.reviewed_at, a.submitted_at)) AS interviewDate,
           GREATEST(1, TIMESTAMPDIFF(DAY, a.submitted_at, COALESCE(a.reviewed_at, NOW()))) AS processingDays,
-          u.full_name AS hrAssigned
+          COALESCE(u.full_name, 'Unassigned') AS hrAssigned
          FROM applications a
          JOIN candidates c ON c.id = a.candidate_id
          JOIN jobs j ON j.id = a.job_id
-         JOIN users u ON u.id = j.created_by_user_id
+         LEFT JOIN users u ON u.id = a.assigned_hr_user_id
          ORDER BY a.submitted_at DESC"
     );
 

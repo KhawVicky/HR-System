@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { PageLayout } from "./PageLayout";
 import { Button } from "./ui/button";
@@ -44,6 +44,8 @@ import {
   FileText,
 } from "lucide-react";
 import { toast } from "sonner";
+import { apiFetch } from "../lib/api";
+import { LoadingState } from "./LoadingState";
 
 export function UserProfile() {
   const navigate = useNavigate();
@@ -85,6 +87,7 @@ export function UserProfile() {
     pushNewApplicant: true,
     pushInterviewReminder: true,
   });
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   // Avatar state
   const [avatarPreview, setAvatarPreview] = useState<
     string | null
@@ -149,13 +152,93 @@ export function UserProfile() {
     }
   };
 
-  const handleNotificationUpdate = () => {
-    toast.success("Notification settings updated!", {
-      description: "Your preferences have been saved.",
-    });
+  const handleNotificationUpdate = async () => {
+    try {
+      await apiFetch("/email-templates", {
+        method: "POST",
+        body: JSON.stringify({
+          interview: {
+            enabled: notifications.candidateInterviewEnabled,
+            subject: notifications.candidateInterviewSubject,
+            body: notifications.candidateInterviewMessage,
+          },
+          reject: {
+            enabled: notifications.candidateRejectedEnabled,
+            subject: notifications.candidateRejectedSubject,
+            body: notifications.candidateRejectedMessage,
+          },
+        }),
+      });
+
+      toast.success("Notification settings updated!", {
+        description: "Your preferences have been saved.",
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to save notification settings",
+      );
+    }
   };
 
-  const handleInterviewAttachmentUpload = (
+  useEffect(() => {
+    setIsLoadingTemplates(true);
+    apiFetch<{
+      templates: {
+        interview_invitation?: {
+          subject?: string;
+          body?: string;
+          isActive?: boolean | number | string;
+          attachmentFileName?: string | null;
+        };
+        reject_application?: {
+          subject?: string;
+          body?: string;
+          isActive?: boolean | number | string;
+        };
+      };
+    }>("/email-templates")
+      .then((data) => {
+        const interview = data.templates?.interview_invitation;
+        const reject = data.templates?.reject_application;
+
+        setNotifications((current) => ({
+          ...current,
+          candidateInterviewEnabled:
+            interview?.isActive === undefined
+              ? current.candidateInterviewEnabled
+              : interview.isActive === true ||
+                interview.isActive === 1 ||
+                interview.isActive === "1",
+          candidateInterviewSubject:
+            interview?.subject ||
+            current.candidateInterviewSubject,
+          candidateInterviewMessage:
+            interview?.body ||
+            current.candidateInterviewMessage,
+          candidateInterviewAttachmentName:
+            interview?.attachmentFileName ||
+            current.candidateInterviewAttachmentName,
+          candidateRejectedEnabled:
+            reject?.isActive === undefined
+              ? current.candidateRejectedEnabled
+              : reject.isActive === true ||
+                reject.isActive === 1 ||
+                reject.isActive === "1",
+          candidateRejectedSubject:
+            reject?.subject || current.candidateRejectedSubject,
+          candidateRejectedMessage:
+            reject?.body || current.candidateRejectedMessage,
+        }));
+      })
+      .catch(() => {
+        // Keep local defaults if the template cannot be loaded.
+      })
+      .finally(() => setIsLoadingTemplates(false));
+  }, []);
+
+  const handleInterviewAttachmentUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
@@ -167,14 +250,35 @@ export function UserProfile() {
       return;
     }
 
-    setNotifications({
-      ...notifications,
-      candidateInterviewAttachmentName: file.name,
-    });
+    const formData = new FormData();
+    formData.append("attachment", file);
 
-    toast.success(
-      "Interview attachment uploaded successfully!",
-    );
+    try {
+      const response = await apiFetch<{ fileName: string }>(
+        "/email-templates/interview-attachment",
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+
+      setNotifications({
+        ...notifications,
+        candidateInterviewAttachmentName: response.fileName,
+      });
+
+      toast.success(
+        "Interview attachment uploaded successfully!",
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to upload interview attachment",
+      );
+    } finally {
+      e.target.value = "";
+    }
   };
 
   const [isEditingProfile, setIsEditingProfile] =
@@ -532,6 +636,10 @@ export function UserProfile() {
           value="notifications"
           className="space-y-6"
         >
+          {isLoadingTemplates ? (
+            <LoadingState title="Loading notification settings" />
+          ) : (
+            <>
           {/* Interview Email Template */}
           <Card className="shadow-md">
             <CardHeader>
@@ -663,7 +771,7 @@ export function UserProfile() {
               <p className="text-xs text-slate-500">
                 Available placeholders: {"{candidateName}"},{" "}
                 {"{jobTitle}"}, {"{companyName}"},{" "}
-                {"{interviewDate}"}
+                {"{interviewDateOptions}"}
               </p>
             </CardContent>
           </Card>
@@ -809,6 +917,8 @@ export function UserProfile() {
               Save Preferences
             </Button>
           </div>
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </PageLayout>

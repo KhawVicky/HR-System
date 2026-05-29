@@ -1,5 +1,6 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import { useParams, useSearchParams } from "react-router";
+import { getCompactPageItems } from "../lib/pagination";
 import { PageLayout } from "./PageLayout";
 import { Button } from "./ui/button";
 import {
@@ -28,6 +29,7 @@ import {
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
@@ -47,9 +49,11 @@ import {
   ChevronUp,
   Info,
   Upload,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch, getStoredUser } from "../lib/api";
+import { LoadingState } from "./LoadingState";
 import {
   Tooltip,
   TooltipContent,
@@ -97,6 +101,11 @@ interface Candidate {
   status: CandidateStatus;
   isShortlisted: boolean;
   interviewSentAt?: string | null;
+  assignedHrUserId?: number | null;
+  assignedHrName?: string | null;
+  lastEmailType?: string | null;
+  lastEmailSentAt?: string | null;
+  lastEmailSentBy?: string | null;
   currentSubmissionNo: number;
   currentSubmissionLabel: string;
   experience: string;
@@ -211,6 +220,11 @@ type ApiCandidate = {
   status: CandidateStatus;
   isShortlisted: boolean | number | string;
   interviewSentAt: string | null;
+  assignedHrUserId: string | number | null;
+  assignedHrName: string | null;
+  lastEmailType: string | null;
+  lastEmailSentAt: string | null;
+  lastEmailSentBy: string | null;
   currentSubmissionNo: string | number;
   currentSubmissionLabel: string;
   eligibilityStatus: string;
@@ -258,6 +272,12 @@ const JOB_HISTORY_PER_PAGE = 5;
 
 const formatDateOnly = (value: string) => value.slice(0, 10);
 
+const getEmailTypeLabel = (type?: string | null) => {
+  if (type === "interview") return "Interview";
+  if (type === "reject") return "Reject";
+  return "Email";
+};
+
 const formatExperience = (value: string | number | null) => {
   if (value === null || value === "") return "";
 
@@ -303,6 +323,14 @@ const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
     interviewSentAt:
       candidate.interviewSentAt ||
       (candidate.status === "interview" ? candidate.appliedDate : null),
+    assignedHrUserId:
+      candidate.assignedHrUserId === null
+        ? null
+        : Number(candidate.assignedHrUserId),
+    assignedHrName: candidate.assignedHrName,
+    lastEmailType: candidate.lastEmailType,
+    lastEmailSentAt: candidate.lastEmailSentAt,
+    lastEmailSentBy: candidate.lastEmailSentBy,
     currentSubmissionNo: Number(candidate.currentSubmissionNo ?? 1),
     currentSubmissionLabel:
       candidate.currentSubmissionLabel || "1st Submission",
@@ -388,11 +416,14 @@ export function CandidateList() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [jobTitle, setJobTitle] = useState("Candidates");
   const [department, setDepartment] = useState("Department");
+  const [isLoadingCandidates, setIsLoadingCandidates] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [sortBy, setSortBy] = useState("rank");
   const [currentPage, setCurrentPage] = useState(1);
+  const [temporarilyVisibleCandidateIds, setTemporarilyVisibleCandidateIds] =
+    useState<Set<string>>(new Set());
   const [jobHistoryPages, setJobHistoryPages] = useState<
     Record<string, number>
   >({});
@@ -409,6 +440,8 @@ export function CandidateList() {
 
   useEffect(() => {
     if (!jobId) return;
+
+    setIsLoadingCandidates(true);
 
     apiFetch<{
       job: { title: string; department: string };
@@ -449,7 +482,8 @@ export function CandidateList() {
             ? error.message
             : "Failed to load candidates",
         ),
-      );
+      )
+      .finally(() => setIsLoadingCandidates(false));
   }, [jobId, searchParams]);
 
   const getTotalWeightedScore = (
@@ -537,6 +571,11 @@ export function CandidateList() {
       status: "new",
       isShortlisted: false,
       interviewSentAt: null,
+      assignedHrUserId: null,
+      assignedHrName: null,
+      lastEmailType: null,
+      lastEmailSentAt: null,
+      lastEmailSentBy: null,
       currentSubmissionNo: 1,
       currentSubmissionLabel: "1st Submission",
       experience: "Pending analysis",
@@ -579,6 +618,7 @@ export function CandidateList() {
 
       const matchesStatus =
         filterStatus === "all" ||
+        temporarilyVisibleCandidateIds.has(candidate.id) ||
         (filterStatus === "shortlisted" &&
           candidate.isShortlisted) ||
         (filterStatus === "interview" &&
@@ -626,6 +666,7 @@ export function CandidateList() {
 
   useEffect(() => {
     setCurrentPage(1);
+    setTemporarilyVisibleCandidateIds(new Set());
   }, [searchQuery, filterStatus, sortBy, jobId]);
 
   const getStatusColor = (status: string) => {
@@ -667,11 +708,24 @@ export function CandidateList() {
   const updateCandidateStatus = async (
     candidateId: string,
     newStatus: CandidateStatus,
-    options: { interviewDateTime?: string; emailAction?: boolean } = {},
+    options: {
+      interviewDateTime?: string;
+      emailAction?: boolean;
+      keepVisibleUntilRefresh?: boolean;
+    } = {},
   ) => {
+    const currentUser = getStoredUser();
     const target = candidates.find(
       (candidate) => candidate.id === candidateId,
     );
+
+    if (options.keepVisibleUntilRefresh) {
+      setTemporarilyVisibleCandidateIds((prev) => {
+        const next = new Set(prev);
+        next.add(candidateId);
+        return next;
+      });
+    }
 
     setCandidates((prev) => {
       const updated = prev.map((candidate) =>
@@ -699,6 +753,26 @@ export function CandidateList() {
                   ? candidate.interviewSentAt ||
                     new Date().toISOString()
                   : candidate.interviewSentAt,
+              assignedHrUserId:
+                candidate.assignedHrUserId ?? currentUser?.id ?? null,
+              assignedHrName:
+                candidate.assignedHrName ?? currentUser?.name ?? null,
+              lastEmailType:
+                options.emailAction
+                  ? newStatus === "interview"
+                    ? "interview"
+                    : newStatus === "rejected"
+                      ? "reject"
+                      : candidate.lastEmailType
+                  : candidate.lastEmailType,
+              lastEmailSentAt:
+                options.emailAction
+                  ? new Date().toISOString()
+                  : candidate.lastEmailSentAt,
+              lastEmailSentBy:
+                options.emailAction
+                  ? currentUser?.name ?? candidate.lastEmailSentBy
+                  : candidate.lastEmailSentBy,
             }
           : candidate,
       );
@@ -709,7 +783,6 @@ export function CandidateList() {
     if (!target?.applicationId) return;
 
     try {
-      const currentUser = getStoredUser();
       await apiFetch(`/applications/${target.applicationId}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -741,8 +814,14 @@ export function CandidateList() {
       }));
     }
 
-    if (isOpening && candidate.status === "new") {
-      updateCandidateStatus(candidate.id, "reviewed");
+    if (
+      isOpening &&
+      (candidate.status === "new" ||
+        (candidate.status === "reviewed" && !candidate.assignedHrUserId))
+    ) {
+      updateCandidateStatus(candidate.id, "reviewed", {
+        keepVisibleUntilRefresh: true,
+      });
       toast.success(`${candidate.name} marked as reviewed`);
     }
   };
@@ -755,7 +834,9 @@ export function CandidateList() {
         ? "reviewed"
         : "shortlisted";
 
-    updateCandidateStatus(candidate.id, newStatus);
+    updateCandidateStatus(candidate.id, newStatus, {
+      keepVisibleUntilRefresh: true,
+    });
 
     toast.success(
       newStatus === "shortlisted"
@@ -989,6 +1070,10 @@ export function CandidateList() {
         </CardContent>
       </Card>
 
+      {isLoadingCandidates ? (
+        <LoadingState title="Loading candidate data" />
+      ) : (
+        <>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card className="shadow-md">
           <CardHeader className="pb-3">
@@ -1426,29 +1511,36 @@ export function CandidateList() {
                 }
               />
             </PaginationItem>
-            {Array.from({ length: jobHistoryPageCount }).map(
-              (_, index) => {
-                const page = index + 1;
+            {getCompactPageItems(
+              jobHistoryPage,
+              jobHistoryPageCount,
+            ).map((item) => {
+              if (typeof item === "string") {
+                return (
+                  <PaginationItem key={item}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                );
+              }
 
                 return (
-                  <PaginationItem key={page}>
+                  <PaginationItem key={item}>
                     <PaginationLink
                       href="#"
-                      isActive={jobHistoryPage === page}
+                      isActive={jobHistoryPage === item}
                       onClick={(event) => {
                         event.preventDefault();
                         setJobHistoryPages((prev) => ({
                           ...prev,
-                          [jobHistoryPageKey]: page,
+                          [jobHistoryPageKey]: item,
                         }));
                       }}
                     >
-                      {page}
+                      {item}
                     </PaginationLink>
                   </PaginationItem>
                 );
-              },
-            )}
+            })}
             <PaginationItem>
               <PaginationNext
                 href="#"
@@ -1474,6 +1566,43 @@ export function CandidateList() {
       )}
     </div>
   )}
+                      <div>
+                        <div className="mb-2 text-sm font-semibold text-slate-700">
+                          Recruitment Handling
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                              <Users className="h-3.5 w-3.5 text-[#003B7A]" />
+                              Responsible HR
+                            </div>
+                            <div className="mt-1 text-sm font-semibold text-slate-900">
+                              {candidate.assignedHrName ||
+                                "Not assigned"}
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                              <Mail className="h-3.5 w-3.5 text-[#003B7A]" />
+                              Latest Email Sent By
+                            </div>
+                            <div className="mt-1 text-sm font-semibold text-slate-900">
+                              {candidate.lastEmailSentBy
+                                ? candidate.lastEmailSentBy
+                                : "Not sent yet"}
+                            </div>
+                            {candidate.lastEmailSentBy && (
+                              <div className="mt-0.5 text-xs text-slate-500">
+                                {getEmailTypeLabel(
+                                  candidate.lastEmailType,
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -1576,20 +1705,26 @@ export function CandidateList() {
                 }
               />
             </PaginationItem>
-            {Array.from({ length: pageCount }).map((_, index) => {
-              const page = index + 1;
+            {getCompactPageItems(currentPage, pageCount).map((item) => {
+              if (typeof item === "string") {
+                return (
+                  <PaginationItem key={item}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                );
+              }
 
               return (
-                <PaginationItem key={page}>
+                <PaginationItem key={item}>
                   <PaginationLink
                     href="#"
-                    isActive={currentPage === page}
+                    isActive={currentPage === item}
                     onClick={(event) => {
                       event.preventDefault();
-                      setCurrentPage(page);
+                      setCurrentPage(item);
                     }}
                   >
-                    {page}
+                    {item}
                   </PaginationLink>
                 </PaginationItem>
               );
@@ -1612,6 +1747,8 @@ export function CandidateList() {
             </PaginationItem>
           </PaginationContent>
         </Pagination>
+      )}
+        </>
       )}
 
       <Dialog

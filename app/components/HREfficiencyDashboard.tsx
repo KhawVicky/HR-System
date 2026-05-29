@@ -25,14 +25,17 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { apiFetch } from "../lib/api";
+import { getCompactPageItems } from "../lib/pagination";
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
 } from "./ui/pagination";
+import { LoadingState } from "./LoadingState";
 
 type CandidateProcessing = {
   candidateName: string;
@@ -49,9 +52,11 @@ export function HREfficiencyDashboard() {
   const [processingData, setProcessingData] = useState<
     CandidateProcessing[]
   >([]);
+  const [isLoadingProcessing, setIsLoadingProcessing] = useState(true);
   const [processingPage, setProcessingPage] = useState(1);
 
   useEffect(() => {
+    setIsLoadingProcessing(true);
     apiFetch<{ details: CandidateProcessing[] }>("/hr-efficiency")
       .then((data) => setProcessingData(data.details))
       .catch((error) =>
@@ -60,7 +65,8 @@ export function HREfficiencyDashboard() {
             ? error.message
             : "Failed to load HR efficiency data",
         ),
-      );
+      )
+      .finally(() => setIsLoadingProcessing(false));
   }, []);
 
   const totalCandidates = processingData.length;
@@ -175,6 +181,9 @@ export function HREfficiencyDashboard() {
       subtitle="Monitor HR team performance in processing candidate applications"
       useCard={false}
     >
+      {isLoadingProcessing ? (
+        <LoadingState title="Loading HR efficiency data" />
+      ) : (
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Card className="shadow-md">
@@ -378,22 +387,29 @@ export function HREfficiencyDashboard() {
                       }
                     />
                   </PaginationItem>
-                  {Array.from({
-                    length: processingPageCount,
-                  }).map((_, index) => {
-                    const page = index + 1;
+                  {getCompactPageItems(
+                    processingPage,
+                    processingPageCount,
+                  ).map((item) => {
+                    if (typeof item === "string") {
+                      return (
+                        <PaginationItem key={item}>
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      );
+                    }
 
                     return (
-                      <PaginationItem key={page}>
+                      <PaginationItem key={item}>
                         <PaginationLink
                           href="#"
-                          isActive={processingPage === page}
+                          isActive={processingPage === item}
                           onClick={(event) => {
                             event.preventDefault();
-                            setProcessingPage(page);
+                            setProcessingPage(item);
                           }}
                         >
-                          {page}
+                          {item}
                         </PaginationLink>
                       </PaginationItem>
                     );
@@ -423,6 +439,7 @@ export function HREfficiencyDashboard() {
           </CardContent>
         </Card>
       </div>
+      )}
     </PageLayout>
   );
 }

@@ -1,6 +1,7 @@
 ﻿import image_a7e321551d78150f830b1e4870452ab5d2dd7d7e from "../assets/uwc-berhad-logo.png";
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
+import { getCompactPageItems } from "../lib/pagination";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -14,6 +15,7 @@ import { Progress } from "./ui/progress";
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
@@ -44,6 +46,7 @@ import {
   type JobSummary,
 } from "../lib/api";
 import { HeaderNotifications } from "./HeaderNotifications";
+import { LoadingState } from "./LoadingState";
 
 type JobStatus = "active" | "closed" | "draft";
 
@@ -75,11 +78,13 @@ const DEPARTMENTS_PER_PAGE = 10;
 
 export function Dashboard() {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [departmentPage, setDepartmentPage] = useState(1);
   const navigate = useNavigate();
   const user = getStoredUser();
 
   useEffect(() => {
+    setIsLoadingJobs(true);
     apiFetch<{ jobs: JobSummary[] }>("/jobs")
       .then((data) => setJobs(data.jobs.map(mapApiJob)))
       .catch((error) =>
@@ -88,7 +93,8 @@ export function Dashboard() {
             ? error.message
             : "Failed to load jobs",
         ),
-      );
+      )
+      .finally(() => setIsLoadingJobs(false));
   }, []);
 
   // Listen for status updates from JobDetails page
@@ -294,6 +300,10 @@ export function Dashboard() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {isLoadingJobs ? (
+          <LoadingState title="Loading dashboard data" />
+        ) : (
+          <>
         {/* Visibility pattern - è®©HRä¸€çœ¼çœ‹åˆ°å…³é”®æŒ‡æ ‡ */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-6">Overview</h1>
@@ -419,20 +429,29 @@ export function Dashboard() {
                   }
                 />
               </PaginationItem>
-              {Array.from({ length: departmentPageCount }).map((_, index) => {
-                const page = index + 1;
+              {getCompactPageItems(
+                departmentPage,
+                departmentPageCount,
+              ).map((item) => {
+                if (typeof item === "string") {
+                  return (
+                    <PaginationItem key={item}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  );
+                }
 
                 return (
-                  <PaginationItem key={page}>
+                  <PaginationItem key={item}>
                     <PaginationLink
                       href="#"
-                      isActive={departmentPage === page}
+                      isActive={departmentPage === item}
                       onClick={(event) => {
                         event.preventDefault();
-                        setDepartmentPage(page);
+                        setDepartmentPage(item);
                       }}
                     >
-                      {page}
+                      {item}
                     </PaginationLink>
                   </PaginationItem>
                 );
@@ -455,6 +474,8 @@ export function Dashboard() {
               </PaginationItem>
             </PaginationContent>
           </Pagination>
+        )}
+          </>
         )}
       </div>
     </div>

@@ -5,3 +5,4 @@ dist
 .tmp-original
 *.log
 *.err
+server/mail-config.local.php

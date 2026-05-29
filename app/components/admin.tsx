@@ -57,6 +57,7 @@ import {
 import { Badge } from "./ui/badge";
 import { toast } from "sonner";
 import { apiFetch } from "../lib/api";
+import { LoadingState } from "./LoadingState";
 
 type UserRole = "HR Staff" | "Hiring Manager";
 type UserStatus = "Active" | "Inactive";
@@ -111,6 +112,7 @@ function getStatusBadgeClass(status: UserStatus) {
 
 export function UserManagementPage() {
   const [users, setUsers] = useState<UserAccount[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [search, setSearch] = useState("");
   const [openCreate, setOpenCreate] = useState(false);
 
@@ -123,6 +125,7 @@ export function UserManagementPage() {
   });
 
   useEffect(() => {
+    setIsLoadingUsers(true);
     apiFetch<{ users: ApiUser[] }>("/users")
       .then((data) => setUsers(data.users.map(mapApiUser)))
       .catch((error) =>
@@ -131,7 +134,8 @@ export function UserManagementPage() {
             ? error.message
             : "Failed to load users",
         ),
-      );
+      )
+      .finally(() => setIsLoadingUsers(false));
   }, []);
 
   const filteredUsers = useMemo(() => {
@@ -358,6 +362,9 @@ export function UserManagementPage() {
       }
       useCard={false}
     >
+      {isLoadingUsers ? (
+        <LoadingState title="Loading user accounts" />
+      ) : (
       <div className="space-y-6">
         <div className="flex justify-end">
           <Dialog
@@ -935,6 +942,7 @@ export function UserManagementPage() {
           </CardContent>
         </Card>
       </div>
+      )}
     </PageLayout>
   );
 }

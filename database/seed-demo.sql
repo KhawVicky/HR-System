@@ -114,6 +114,12 @@ ON DUPLICATE KEY UPDATE
   ai_summary = VALUES(ai_summary),
   reviewed_at = VALUES(reviewed_at);
 
+UPDATE applications a
+JOIN jobs j ON j.id = a.job_id
+SET a.assigned_hr_user_id = j.created_by_user_id
+WHERE a.assigned_hr_user_id IS NULL
+  AND a.reviewed_at IS NOT NULL;
+
 DELETE FROM resumes
 WHERE original_file_name LIKE 'resume-application-%.pdf';
 

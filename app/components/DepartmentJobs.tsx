@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router";
+import { getCompactPageItems } from "../lib/pagination";
 import { PageLayout } from "./PageLayout";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -15,6 +16,7 @@ import { Progress } from "./ui/progress";
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
@@ -38,6 +40,7 @@ import {
   apiFetch,
   type JobSummary,
 } from "../lib/api";
+import { LoadingState } from "./LoadingState";
 
 type JobStatus = "active" | "closed" | "draft";
 
@@ -76,11 +79,13 @@ export function DepartmentJobs() {
   const { department } = useParams<{ department: string }>();
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "closed" | "draft">("all");
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
+    setIsLoadingJobs(true);
     apiFetch<{ jobs: JobSummary[] }>("/jobs")
       .then((data) => setJobs(data.jobs.map(mapApiJob)))
       .catch((error) =>
@@ -89,7 +94,8 @@ export function DepartmentJobs() {
             ? error.message
             : "Failed to load jobs",
         ),
-      );
+      )
+      .finally(() => setIsLoadingJobs(false));
   }, []);
 
   const copyToClipboard = (text: string, message: string) => {
@@ -139,6 +145,21 @@ export function DepartmentJobs() {
   const activeCount = departmentJobs.filter(
     (job) => job.status === "active",
   ).length;
+
+  if (isLoadingJobs) {
+    return (
+      <PageLayout
+        breadcrumbs={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: department || "Department" },
+        ]}
+        title={`${department || "Department"} Positions`}
+        useCard={false}
+      >
+        <LoadingState title="Loading department jobs" />
+      </PageLayout>
+    );
+  }
 
   if (!department || departmentJobs.length === 0) {
     return (
@@ -408,20 +429,26 @@ export function DepartmentJobs() {
                 }
               />
             </PaginationItem>
-            {Array.from({ length: pageCount }).map((_, index) => {
-              const page = index + 1;
+            {getCompactPageItems(currentPage, pageCount).map((item) => {
+              if (typeof item === "string") {
+                return (
+                  <PaginationItem key={item}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                );
+              }
 
               return (
-                <PaginationItem key={page}>
+                <PaginationItem key={item}>
                   <PaginationLink
                     href="#"
-                    isActive={currentPage === page}
+                    isActive={currentPage === item}
                     onClick={(event) => {
                       event.preventDefault();
-                      setCurrentPage(page);
+                      setCurrentPage(item);
                     }}
                   >
-                    {page}
+                    {item}
                   </PaginationLink>
                 </PaginationItem>
               );

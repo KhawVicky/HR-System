@@ -39,6 +39,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { apiFetch, type JobSummary } from "../lib/api";
+import { LoadingState } from "./LoadingState";
 
 type JobDetailsData = JobSummary & {
   responsibilities?: { responsibility: string }[];
@@ -71,10 +72,12 @@ export function JobDetails() {
   const navigate = useNavigate();
   const [job, setJob] = useState<(JobDetailsData & { link: string | null; description: string }) | null>(null);
   const [currentStatus, setCurrentStatus] = useState<string>("active");
+  const [isLoadingJob, setIsLoadingJob] = useState(true);
 
   useEffect(() => {
     if (!jobId) return;
 
+    setIsLoadingJob(true);
     apiFetch<{ job: JobDetailsData }>(`/jobs/${jobId}`)
       .then(({ job: loadedJob }) => {
         const status = toJobStatus(loadedJob.status);
@@ -94,8 +97,24 @@ export function JobDetails() {
             ? error.message
             : "Failed to load job details",
         ),
-      );
+      )
+      .finally(() => setIsLoadingJob(false));
   }, [jobId]);
+
+  if (isLoadingJob) {
+    return (
+      <PageLayout
+        breadcrumbs={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Job Details" },
+        ]}
+        title="Job Details"
+        useCard={false}
+      >
+        <LoadingState title="Loading job details" />
+      </PageLayout>
+    );
+  }
 
   if (!job) {
     return <div>Job not found</div>;

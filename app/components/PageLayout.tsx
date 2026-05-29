@@ -45,7 +45,11 @@ export function PageLayout({
       <nav className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
+            <Link
+              to="/dashboard"
+              className="flex items-center gap-3 rounded-md transition-opacity hover:opacity-80"
+              aria-label="Go to HR Dashboard"
+            >
               <img
                 src={
                   image_a7e321551d78150f830b1e4870452ab5d2dd7d7e
@@ -56,7 +60,7 @@ export function PageLayout({
               <span className="text-lg font-semibold text-slate-900">
                 HR Dashboard
               </span>
-            </div>
+            </Link>
 
             <div className="flex items-center gap-4">
               <Button

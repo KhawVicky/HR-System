@@ -83,3 +83,8 @@
 - Limited notifications to `new_application` and `email_sent`; interview/rejection email actions now create an `email_logs` row and a confirmation notification only for the HR user who sent the email.
 - Notification records now store the related application, and clicking a notification opens the matching job candidate page with that candidate details panel expanded.
 - Candidate applications now support multiple uploaded documents per application, and HR can open all uploaded files from the candidate list Resume button.
+- Standardized all pagination controls to use compact page numbers with ellipsis instead of rendering every page.
+- Added responsible HR tracking on applications. Opening a new candidate review assigns the current HR user, duplicate resubmissions archive the previous assigned HR in submission history, and HR Efficiency now reports by assigned HR instead of job creator.
+- Candidate cards now show the responsible HR and the latest sent email sender/type from `email_logs`.
+- Notification settings now persist the interview email attachment in `email_templates` and store the uploaded file under the API uploads folder for SMTP attachment sending.
+- Email templates are now persisted and reused by sending: interview uses the preview wording with `{interviewDateOptions}`, and reject email uses the Notification settings template with preserved blank lines.
