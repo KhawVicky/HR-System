@@ -48,7 +48,13 @@ type CandidateProcessing = {
 
 const PROCESSING_DETAILS_PER_PAGE = 15;
 
-export function HREfficiencyDashboard() {
+type HREfficiencyDashboardProps = {
+  embedded?: boolean;
+};
+
+export function HREfficiencyDashboard({
+  embedded = false,
+}: HREfficiencyDashboardProps) {
   const [processingData, setProcessingData] = useState<
     CandidateProcessing[]
   >([]);
@@ -171,16 +177,8 @@ export function HREfficiencyDashboard() {
     setProcessingPage(1);
   }, [processingData.length]);
 
-  return (
-    <PageLayout
-      breadcrumbs={[
-        { label: "Dashboard", href: "/dashboard" },
-        { label: "HR Efficiency" },
-      ]}
-      title="HR Efficiency Dashboard"
-      subtitle="Monitor HR team performance in processing candidate applications"
-      useCard={false}
-    >
+  const content = (
+    <>
       {isLoadingProcessing ? (
         <LoadingState title="Loading HR efficiency data" />
       ) : (
@@ -440,6 +438,24 @@ export function HREfficiencyDashboard() {
         </Card>
       </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <PageLayout
+      breadcrumbs={[
+        { label: "Dashboard", href: "/dashboard" },
+        { label: "HR Efficiency" },
+      ]}
+      title="HR Efficiency Dashboard"
+      subtitle="Monitor HR team performance in processing candidate applications"
+      useCard={false}
+    >
+      {content}
     </PageLayout>
   );
 }

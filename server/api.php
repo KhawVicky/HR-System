@@ -51,6 +51,8 @@ try {
         users($mysqli);
     } elseif ($method === "POST" && route_is($segments, ["users"])) {
         create_user($mysqli);
+    } elseif ($method === "GET" && count($segments) === 3 && $segments[0] === "users" && $segments[2] === "actions") {
+        user_action_logs($mysqli, (int) $segments[1]);
     } elseif ($method === "GET" && route_is($segments, ["email-templates"])) {
         email_templates($mysqli);
     } elseif ($method === "POST" && route_is($segments, ["email-templates"])) {
@@ -492,6 +494,13 @@ function update_application(mysqli $db, int $applicationId): void
         respond(["error" => "Invalid application status"], 422);
     }
 
+    $before = row(
+        $db,
+        "SELECT application_status, is_shortlisted, interview_sent_at FROM applications WHERE id = ?",
+        "i",
+        [$applicationId]
+    );
+
     if ($status === "shortlisted") {
         exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), is_shortlisted = 1, application_status = IF(application_status = 'interview', application_status, 'shortlisted'), reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
     } elseif ($status === "reviewed") {
@@ -511,7 +520,88 @@ function update_application(mysqli $db, int $applicationId): void
     }
 
     $updated = row($db, "SELECT application_status, is_shortlisted, interview_sent_at, assigned_hr_user_id FROM applications WHERE id = ?", "i", [$applicationId]);
+    log_application_action($db, $applicationId, $actionUserId, $status, $emailAction, $interviewDateTime, $before ?: [], $updated ?: []);
     respond(["ok" => true, "application" => $updated ?: []]);
+}
+
+function log_application_action(
+    mysqli $db,
+    int $applicationId,
+    int $userId,
+    string $status,
+    bool $emailAction,
+    string $interviewDateTime,
+    array $before,
+    array $after
+): void {
+    if ($userId <= 0) {
+        return;
+    }
+
+    $application = row(
+        $db,
+        "SELECT a.job_id AS jobId, a.candidate_id AS candidateId, j.title AS jobTitle, c.full_name AS candidateName
+         FROM applications a
+         JOIN jobs j ON j.id = a.job_id
+         JOIN candidates c ON c.id = a.candidate_id
+         WHERE a.id = ?",
+        "i",
+        [$applicationId]
+    );
+
+    if (!$application) {
+        return;
+    }
+
+    $actionType = "status_update";
+    $actionLabel = "Updated Application Status";
+    $details = "";
+
+    if ($status === "reviewed") {
+        $actionType = "review_candidate";
+        $actionLabel = "Reviewed Candidate";
+        $details = "Opened candidate details and marked the application as reviewed.";
+    } elseif ($status === "shortlisted") {
+        $actionType = "shortlist_candidate";
+        $actionLabel = "Shortlisted Candidate";
+        $details = "Marked the candidate as shortlisted.";
+    } elseif ($status === "interview") {
+        $actionType = "send_interview_email";
+        $actionLabel = "Sent Interview Email";
+        $details = $emailAction
+            ? "Sent interview email" . ($interviewDateTime !== "" ? " with interview date/time: {$interviewDateTime}." : ".")
+            : "Moved the candidate into interview status.";
+    } elseif ($status === "rejected") {
+        $actionType = "reject_candidate";
+        $actionLabel = "Rejected Candidate";
+        $details = $emailAction ? "Rejected the candidate and sent rejection email." : "Rejected the candidate.";
+    } elseif ($status === "filtered_out") {
+        $actionType = "filter_out_candidate";
+        $actionLabel = "Filtered Out Candidate";
+        $details = "Marked the candidate as filtered out.";
+    }
+
+    $beforeStatus = (string) ($before["application_status"] ?? "");
+    $afterStatus = (string) ($after["application_status"] ?? "");
+    if ($beforeStatus !== "" || $afterStatus !== "") {
+        $details .= ($details !== "" ? " " : "") . "Status: " . ($beforeStatus ?: "-") . " -> " . ($afterStatus ?: "-") . ".";
+    }
+
+    exec_stmt(
+        $db,
+        "INSERT INTO hr_action_logs (user_id, application_id, job_id, candidate_id, action_type, action_label, details)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "iiiisss",
+        [
+            $userId,
+            $applicationId,
+            (int) $application["jobId"],
+            (int) $application["candidateId"],
+            $actionType,
+            $actionLabel,
+            $details,
+        ]
+    );
 }
 
 function apply_job(mysqli $db, string $jobCode): void
@@ -1404,6 +1494,42 @@ function users(mysqli $db): void
              FROM users u
              JOIN roles r ON r.id = u.role_id
              ORDER BY u.role_id, u.full_name"
+        )
+    ]);
+}
+
+function user_action_logs(mysqli $db, int $userId): void
+{
+    if ($userId <= 0) {
+        respond(["error" => "Invalid user"], 422);
+    }
+
+    respond([
+        "actions" => rows(
+            $db,
+            "SELECT
+               hal.id,
+               hal.action_type AS actionType,
+               hal.action_label AS actionLabel,
+               hal.details,
+               hal.created_at AS createdAt,
+               hal.application_id AS applicationId,
+               j.id AS jobId,
+               j.title AS jobTitle,
+               j.department AS jobDepartment,
+               c.id AS candidateId,
+               c.full_name AS candidateName,
+               c.email AS candidateEmail,
+               a.application_status AS applicationStatus
+             FROM hr_action_logs hal
+             LEFT JOIN applications a ON a.id = hal.application_id
+             LEFT JOIN jobs j ON j.id = hal.job_id
+             LEFT JOIN candidates c ON c.id = hal.candidate_id
+             WHERE hal.user_id = ?
+             ORDER BY hal.created_at DESC, hal.id DESC
+             LIMIT 200",
+            "i",
+            [$userId]
         )
     ]);
 }

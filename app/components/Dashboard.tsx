@@ -41,7 +41,6 @@ import { toast } from "sonner";
 import {
   apiFetch,
   canManageUsers,
-  canViewHrEfficiency,
   getStoredUser,
   type JobSummary,
 } from "../lib/api";
@@ -236,25 +235,14 @@ export function Dashboard() {
                 Attendance
               </Button>
 
-              {canViewHrEfficiency(user) && (
+              {canManageUsers(user) && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => navigate("/hr-efficiency")}
                 >
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                  HR Efficiency
-                </Button>
-              )}
-
-              {canManageUsers(user) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate("/admin")}
-                >
                   <ShieldCheck className="w-4 h-4 mr-2" />
-                  User Management
+                  HR Management
                 </Button>
               )}
               <HeaderNotifications />

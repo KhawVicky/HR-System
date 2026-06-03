@@ -10,11 +10,10 @@ import { AttendanceAnalytics } from "./components/AttendanceAnalytics";
 import { Reports } from "./components/Reports";
 import { UserProfile } from "./components/UserProfile";
 import { NotificationsPage } from "./components/NotificationsPage";
-import { UserManagementPage } from "./components/admin";
-import { HREfficiencyDashboard } from "./components/HREfficiencyDashboard";
+import { HRManagement } from "./components/HRManagement";
 import { DepartmentJobs } from "./components/DepartmentJobs";
 import { NotFound } from "./components/NotFound";
-import { canManageUsers, canViewHrEfficiency, getStoredUser } from "./lib/api";
+import { canManageUsers, getStoredUser } from "./lib/api";
 
 // Simple auth check
 export const isAuthenticated = () => {
@@ -39,18 +38,6 @@ const ManagerRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!canManageUsers(getStoredUser())) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  return <>{children}</>;
-};
-
-const HREfficiencyRoute = ({ children }: { children: React.ReactNode }) => {
-  if (!isAuthenticated()) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (!canViewHrEfficiency(getStoredUser())) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -154,16 +141,16 @@ export const router = createBrowserRouter([
         path: "admin",
         element: (
           <ManagerRoute>
-            <UserManagementPage />
+            <HRManagement />
           </ManagerRoute>
         ),
       },
       {
         path: "hr-efficiency",
         element: (
-          <HREfficiencyRoute>
-            <HREfficiencyDashboard />
-          </HREfficiencyRoute>
+          <ManagerRoute>
+            <HRManagement />
+          </ManagerRoute>
         ),
       },
       {

@@ -1,11 +1,10 @@
 import image_a7e321551d78150f830b1e4870452ab5d2dd7d7e from "../assets/uwc-berhad-logo.png";
-import { ChevronRight, CalendarCheck, LogOut, ShieldCheck, TrendingUp } from "lucide-react";
+import { ChevronRight, CalendarCheck, LogOut, ShieldCheck } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
 import {
   canManageUsers,
-  canViewHrEfficiency,
   getStoredUser,
 } from "../lib/api";
 import { HeaderNotifications } from "./HeaderNotifications";
@@ -71,24 +70,14 @@ export function PageLayout({
                 <CalendarCheck className="w-4 h-4 mr-2" />
                 Attendance
               </Button>
-              {canViewHrEfficiency(user) && (
+              {canManageUsers(user) && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => navigate("/hr-efficiency")}
                 >
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                  HR Efficiency
-                </Button>
-              )}
-              {canManageUsers(user) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate("/admin")}
-                >
                   <ShieldCheck className="w-4 h-4 mr-2" />
-                  User Management
+                  HR Management
                 </Button>
               )}
 

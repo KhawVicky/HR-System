@@ -88,3 +88,8 @@
 - Candidate cards now show the responsible HR and the latest sent email sender/type from `email_logs`.
 - Notification settings now persist the interview email attachment in `email_templates` and store the uploaded file under the API uploads folder for SMTP attachment sending.
 - Email templates are now persisted and reused by sending: interview uses the preview wording with `{interviewDateOptions}`, and reject email uses the Notification settings template with preserved blank lines.
+- Combined HR Efficiency and User Management into one HR Management workspace with tabs, so Manager users use a single header entry for both features.
+- Added `hr_action_logs` for candidate screening audit history. Application review, shortlist, interview email, rejection email, and status actions are recorded with HR user, candidate, job post, action type, details, and timestamp.
+- User Management now has a View Action History popup from the account action menu to inspect what each HR user clicked or changed during candidate screening.
+- Normalized rejection audit actions so rejection emails and direct rejections both appear as `Rejected Candidate` / `reject_candidate`, avoiding duplicate rejection action types in HR action history.
+- Normalized interview audit actions so interview status/email actions both appear as `Sent Interview Email` / `send_interview_email`, avoiding duplicate interview action types in HR action history.
