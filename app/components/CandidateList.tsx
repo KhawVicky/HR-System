@@ -424,6 +424,8 @@ export function CandidateList() {
   const [currentPage, setCurrentPage] = useState(1);
   const [temporarilyVisibleCandidateIds, setTemporarilyVisibleCandidateIds] =
     useState<Set<string>>(new Set());
+  const [sendingEmailCandidateIds, setSendingEmailCandidateIds] =
+    useState<Set<string>>(new Set());
   const [jobHistoryPages, setJobHistoryPages] = useState<
     Record<string, number>
   >({});
@@ -454,6 +456,7 @@ export function CandidateList() {
           data.candidates.map(mapApiCandidate),
         );
         setCandidates(loadedCandidates);
+        setSearchQuery(searchParams.get("search") || "");
 
         const targetApplicationId = searchParams.get("applicationId");
         const targetCandidateId = searchParams.get("candidateId");
@@ -713,11 +716,12 @@ export function CandidateList() {
       emailAction?: boolean;
       keepVisibleUntilRefresh?: boolean;
     } = {},
-  ) => {
+  ): Promise<boolean> => {
     const currentUser = getStoredUser();
     const target = candidates.find(
       (candidate) => candidate.id === candidateId,
     );
+    const previousCandidates = candidates;
 
     if (options.keepVisibleUntilRefresh) {
       setTemporarilyVisibleCandidateIds((prev) => {
@@ -780,7 +784,10 @@ export function CandidateList() {
       return recalculateRanks(updated);
     });
 
-    if (!target?.applicationId) return;
+    if (!target?.applicationId) {
+      toast.error("Application record is missing for this candidate");
+      return false;
+    }
 
     try {
       await apiFetch(`/applications/${target.applicationId}`, {
@@ -792,12 +799,22 @@ export function CandidateList() {
           emailAction: options.emailAction,
         }),
       });
+      return true;
     } catch (error) {
+      setCandidates(previousCandidates);
+      setTemporarilyVisibleCandidateIds((prev) => {
+        if (!prev.has(candidateId)) return prev;
+
+        const next = new Set(prev);
+        next.delete(candidateId);
+        return next;
+      });
       toast.error(
         error instanceof Error
           ? error.message
           : "Failed to update candidate status",
       );
+      return false;
     }
   };
 
@@ -850,7 +867,7 @@ export function CandidateList() {
     setInterviewDateTime("");
   };
 
-  const handleConfirmSendInterviewEmail = () => {
+  const handleConfirmSendInterviewEmail = async () => {
     if (!interviewPopupCandidate) return;
 
     if (!interviewDateTime) {
@@ -858,23 +875,54 @@ export function CandidateList() {
       return;
     }
 
-    updateCandidateStatus(
-      interviewPopupCandidate.id,
-      "interview",
-      { interviewDateTime, emailAction: true },
-    );
+    const candidateId = interviewPopupCandidate.id;
+    setSendingEmailCandidateIds((prev) => {
+      const next = new Set(prev);
+      next.add(candidateId);
+      return next;
+    });
 
-    toast.success(
-      `Interview email sent to ${interviewPopupCandidate.name}`,
-    );
+    const isSent = await updateCandidateStatus(candidateId, "interview", {
+      interviewDateTime,
+      emailAction: true,
+    });
 
-    setInterviewPopupCandidate(null);
-    setInterviewDateTime("");
+    setSendingEmailCandidateIds((prev) => {
+      const next = new Set(prev);
+      next.delete(candidateId);
+      return next;
+    });
+
+    if (isSent) {
+      toast.success(
+        `Interview email sent to ${interviewPopupCandidate.name}`,
+      );
+
+      setInterviewPopupCandidate(null);
+      setInterviewDateTime("");
+    }
   };
 
-  const handleRejectCandidate = (candidate: Candidate) => {
-    updateCandidateStatus(candidate.id, "rejected", { emailAction: true });
-    toast.success(`Rejection email sent to ${candidate.name}`);
+  const handleRejectCandidate = async (candidate: Candidate) => {
+    setSendingEmailCandidateIds((prev) => {
+      const next = new Set(prev);
+      next.add(candidate.id);
+      return next;
+    });
+
+    const isSent = await updateCandidateStatus(candidate.id, "rejected", {
+      emailAction: true,
+    });
+
+    setSendingEmailCandidateIds((prev) => {
+      const next = new Set(prev);
+      next.delete(candidate.id);
+      return next;
+    });
+
+    if (isSent) {
+      toast.success(`Rejection email sent to ${candidate.name}`);
+    }
   };
 
   const [documentCandidate, setDocumentCandidate] =
@@ -1150,6 +1198,9 @@ export function CandidateList() {
           const isShortlisted = candidate.isShortlisted;
           const hasInterviewSent = Boolean(
             candidate.interviewSentAt,
+          );
+          const isEmailSending = sendingEmailCandidateIds.has(
+            candidate.id,
           );
           const jobHistory = candidate.appliedJobHistory ?? [];
           const jobHistoryPageKey =
@@ -1647,12 +1698,15 @@ export function CandidateList() {
                           handleSendInterviewEmail(candidate)
                         }
                         disabled={
+                          isEmailSending ||
                           candidate.status === "rejected" ||
                           hasInterviewSent
                         }
                       >
                         <Mail className="w-4 h-4 mr-2" />
-                        {hasInterviewSent
+                        {isEmailSending
+                          ? "Sending..."
+                          : hasInterviewSent
                           ? "Interview Email Sent"
                           : "Send Interview Email"}
                       </Button>
@@ -1664,11 +1718,12 @@ export function CandidateList() {
                           handleRejectCandidate(candidate)
                         }
                         disabled={
+                          isEmailSending ||
                           candidate.status === "filtered_out" ||
                           candidate.status === "rejected"
                         }
                       >
-                        Reject
+                        {isEmailSending ? "Sending..." : "Reject"}
                       </Button>
                     </div>
                   </div>
@@ -1862,6 +1917,9 @@ UWC Berhad`}
               <Button
                 type="button"
                 variant="outline"
+                disabled={sendingEmailCandidateIds.has(
+                  interviewPopupCandidate.id,
+                )}
                 onClick={() => {
                   setInterviewPopupCandidate(null);
                   setInterviewDateTime("");
@@ -1873,9 +1931,16 @@ UWC Berhad`}
               <Button
                 type="button"
                 className="bg-[#003B7A] hover:bg-[#002f63] text-white"
+                disabled={sendingEmailCandidateIds.has(
+                  interviewPopupCandidate.id,
+                )}
                 onClick={handleConfirmSendInterviewEmail}
               >
-                Send Email
+                {sendingEmailCandidateIds.has(
+                  interviewPopupCandidate.id,
+                )
+                  ? "Sending..."
+                  : "Send Email"}
               </Button>
             </div>
           </div>

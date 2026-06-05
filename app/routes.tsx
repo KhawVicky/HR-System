@@ -12,6 +12,8 @@ import { UserProfile } from "./components/UserProfile";
 import { NotificationsPage } from "./components/NotificationsPage";
 import { HRManagement } from "./components/HRManagement";
 import { DepartmentJobs } from "./components/DepartmentJobs";
+import { JobManagement } from "./components/JobManagement";
+import { ApplicationList } from "./components/ApplicationList";
 import { NotFound } from "./components/NotFound";
 import { canManageUsers, getStoredUser } from "./lib/api";
 
@@ -66,6 +68,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: "jobs",
+        element: (
+          <ProtectedRoute>
+            <JobManagement />
+          </ProtectedRoute>
+        ),
+      },
+      {
         path: "jobs/create",
         element: (
           <ProtectedRoute>
@@ -94,6 +104,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <CandidateList />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "applications",
+        element: (
+          <ProtectedRoute>
+            <ApplicationList />
           </ProtectedRoute>
         ),
       },

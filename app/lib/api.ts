@@ -38,6 +38,7 @@ export interface JobSummary {
   requiredQualification: string | null;
   requiredExperience: string | null;
   jdFileName: string | null;
+  publishedAt: string | null;
   createdAt: string;
   link: string | null;
   applicants: number;

@@ -35,6 +35,8 @@ try {
         dashboard($mysqli);
     } elseif ($method === "GET" && route_is($segments, ["jobs"])) {
         jobs($mysqli);
+    } elseif ($method === "GET" && route_is($segments, ["applications"])) {
+        applications($mysqli);
     } elseif ($method === "GET" && count($segments) === 2 && $segments[0] === "jobs") {
         job_details($mysqli, (int) $segments[1]);
     } elseif ($method === "PATCH" && count($segments) === 2 && $segments[0] === "jobs") {
@@ -196,10 +198,11 @@ function jobs_query(): string
         j.required_qualification AS requiredQualification,
         j.required_experience AS requiredExperience,
         j.jd_file_name AS jdFileName,
+        j.published_at AS publishedAt,
         j.created_at AS createdAt,
         al.public_path AS link,
         COUNT(a.id) AS applicants,
-        SUM(CASE WHEN a.submitted_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS newApplicants,
+        SUM(CASE WHEN a.submitted_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS newApplicants,
         ROUND(COALESCE(AVG(a.total_score), 0), 2) AS avgScore,
         SUM(CASE WHEN a.application_status = 'shortlisted' THEN 1 ELSE 0 END) AS shortlistedCount,
         SUM(CASE WHEN a.application_status = 'new' THEN 1 ELSE 0 END) AS pendingCount
@@ -218,9 +221,9 @@ function dashboard(mysqli $db): void
           (SELECT COUNT(*) FROM jobs) AS totalJobs,
           (SELECT COUNT(*) FROM jobs WHERE status = 'active') AS activeJobs,
           (SELECT COUNT(*) FROM applications) AS totalCandidates,
-          (SELECT COUNT(*) FROM applications WHERE application_status = 'new') AS pendingReview,
+          (SELECT COUNT(*) FROM applications WHERE application_status = 'new' OR reviewed_at IS NULL) AS pendingReview,
           (SELECT COUNT(*) FROM applications WHERE application_status = 'shortlisted') AS shortlisted,
-          (SELECT COUNT(*) FROM applications WHERE submitted_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) AS recentApplications"
+          (SELECT COUNT(*) FROM applications WHERE submitted_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)) AS recentApplications"
     );
     respond(["summary" => $summary, "jobs" => $jobs]);
 }
@@ -228,6 +231,44 @@ function dashboard(mysqli $db): void
 function jobs(mysqli $db): void
 {
     respond(["jobs" => rows($db, jobs_query() . " ORDER BY j.department, j.created_at DESC")]);
+}
+
+function applications(mysqli $db): void
+{
+    $filter = (string) ($_GET["filter"] ?? "all");
+    $where = "";
+
+    if ($filter === "last24") {
+        $where = "WHERE a.submitted_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)";
+    } elseif ($filter === "pending") {
+        $where = "WHERE a.application_status = 'new' OR a.reviewed_at IS NULL";
+    }
+
+    $applications = rows(
+        $db,
+        "SELECT
+           a.id AS applicationId,
+           c.full_name AS candidateName,
+           c.email AS candidateEmail,
+           j.id AS jobId,
+           j.title AS jobTitle,
+           j.department AS jobDepartment,
+           a.submitted_at AS submittedDate,
+           a.eligibility_status AS eligibilityStatus,
+           a.total_score AS score,
+           a.application_status AS status,
+           CASE
+             WHEN a.total_score IS NULL THEN 'Pending Score'
+             ELSE 'Scored'
+           END AS scoreStatus
+         FROM applications a
+         JOIN candidates c ON c.id = a.candidate_id
+         JOIN jobs j ON j.id = a.job_id
+         {$where}
+         ORDER BY a.submitted_at DESC, a.id DESC"
+    );
+
+    respond(["applications" => $applications]);
 }
 
 function job_details(mysqli $db, int $jobId): void

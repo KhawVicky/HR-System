@@ -61,6 +61,12 @@ interface Job {
   createdAt: string;
 }
 
+type DashboardSummary = {
+  activeJobs: string | number;
+  recentApplications: string | number;
+  pendingReview: string | number;
+};
+
 const mapApiJob = (job: JobSummary): Job => ({
   id: String(job.id),
   title: job.title,
@@ -77,6 +83,11 @@ const DEPARTMENTS_PER_PAGE = 10;
 
 export function Dashboard() {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [summary, setSummary] = useState<DashboardSummary>({
+    activeJobs: 0,
+    recentApplications: 0,
+    pendingReview: 0,
+  });
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [departmentPage, setDepartmentPage] = useState(1);
   const navigate = useNavigate();
@@ -84,8 +95,13 @@ export function Dashboard() {
 
   useEffect(() => {
     setIsLoadingJobs(true);
-    apiFetch<{ jobs: JobSummary[] }>("/jobs")
-      .then((data) => setJobs(data.jobs.map(mapApiJob)))
+    apiFetch<{ summary: DashboardSummary; jobs: JobSummary[] }>(
+      "/dashboard",
+    )
+      .then((data) => {
+        setSummary(data.summary);
+        setJobs(data.jobs.map(mapApiJob));
+      })
       .catch((error) =>
         toast.error(
           error instanceof Error
@@ -179,17 +195,9 @@ export function Dashboard() {
     }
   };
 
-  const totalApplicants = jobs.reduce(
-    (sum, job) => sum + job.applicants,
-    0,
-  );
-  const activeJobs = jobs.filter(
-    (job) => job.status === "active",
-  ).length;
-  const newApplicants = jobs.reduce(
-    (sum, job) => sum + job.newApplicants,
-    0,
-  );
+  const activeJobs = Number(summary.activeJobs ?? 0);
+  const newApplications = Number(summary.recentApplications ?? 0);
+  const pendingReviews = Number(summary.pendingReview ?? 0);
   const departments = Array.from(
     new Set(jobs.map((job) => job.department)),
   );
@@ -292,58 +300,90 @@ export function Dashboard() {
           <LoadingState title="Loading dashboard data" />
         ) : (
           <>
-        {/* Visibility pattern - è®©HRä¸€çœ¼çœ‹åˆ°å…³é”®æŒ‡æ ‡ */}
+        {/* Dashboard overview */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-6">Overview</h1>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Card Layout pattern */}
-              <Card className="shadow-md">
+            <Card
+              className="cursor-pointer shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate("/jobs?status=active")}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  navigate("/jobs?status=active");
+                }
+              }}
+            >
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
                   Active Jobs
                 </CardTitle>
-                <Briefcase className="h-4 w-4 text-slate-500" />
+                <Briefcase className="h-5 w-5 text-[#003B7A]" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
                   {activeJobs}
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  {jobs.length - activeJobs} inactive positions
+                  View open job posts
                 </p>
               </CardContent>
             </Card>
 
-            <Card className="shadow-md">
+            <Card
+              className="cursor-pointer shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate("/applications?filter=last24")}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  navigate("/applications?filter=last24");
+                }
+              }}
+            >
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
-                  Total Applicants
+                  New Applications
                 </CardTitle>
-                <Users className="h-4 w-4 text-slate-500" />
+                <TrendingUp className="h-5 w-5 text-[#003B7A]" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {totalApplicants}
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  Across all positions
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-md">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  New Applicants
-                </CardTitle>
-                <TrendingUp className="h-4 w-4 text-slate-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {newApplicants}
+                  {newApplications}
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
                   In the last 24 hours
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="cursor-pointer shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate("/applications?filter=pending")}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  navigate("/applications?filter=pending");
+                }
+              }}
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Pending Reviews
+                </CardTitle>
+                <FileText className="h-5 w-5 text-[#003B7A]" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {pendingReviews}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Applications waiting for review
                 </p>
               </CardContent>
             </Card>
