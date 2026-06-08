@@ -221,7 +221,7 @@ function dashboard(mysqli $db): void
           (SELECT COUNT(*) FROM jobs) AS totalJobs,
           (SELECT COUNT(*) FROM jobs WHERE status = 'active') AS activeJobs,
           (SELECT COUNT(*) FROM applications) AS totalCandidates,
-          (SELECT COUNT(*) FROM applications WHERE application_status = 'new' OR reviewed_at IS NULL) AS pendingReview,
+          (SELECT COUNT(*) FROM applications WHERE application_status = 'new') AS pendingReview,
           (SELECT COUNT(*) FROM applications WHERE application_status = 'shortlisted') AS shortlisted,
           (SELECT COUNT(*) FROM applications WHERE submitted_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)) AS recentApplications"
     );
@@ -241,7 +241,7 @@ function applications(mysqli $db): void
     if ($filter === "last24") {
         $where = "WHERE a.submitted_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)";
     } elseif ($filter === "pending") {
-        $where = "WHERE a.application_status = 'new' OR a.reviewed_at IS NULL";
+        $where = "WHERE a.application_status = 'new'";
     }
 
     $applications = rows(
@@ -1673,6 +1673,8 @@ function hr_efficiency(mysqli $db): void
         $db,
         "SELECT
           c.full_name AS candidateName,
+          c.email AS candidateEmail,
+          j.id AS jobId,
           j.title AS jobTitle,
           DATE(a.submitted_at) AS applicationDate,
           DATE(COALESCE(a.reviewed_at, a.submitted_at)) AS interviewDate,

@@ -20,3 +20,9 @@
 - Fix: Email actions now wait for the API result before showing success, closing the modal, or keeping the status update. Failed sends roll back the optimistic candidate state and show the API/SMTP error. Email buttons show a temporary `Sending...` state to prevent duplicate clicks.
 - Note: Seed/demo candidates using fake `example.com` addresses may still appear as sent in `email_logs` but will not be received by a real person.
 
+## 2026-06-08 - Pending Reviews Included Reviewed Candidates
+
+- Symptom: The Pending Reviews dashboard drill-down showed candidates with `REVIEWED` status.
+- Cause: The deployed XAMPP API still used the older pending condition `application_status = 'new' OR reviewed_at IS NULL`. Some reviewed seed/demo rows had a null `reviewed_at`, so they were incorrectly included.
+- Fix: Pending review now means only `application_status = 'new'` in both dashboard count and application list filtering, then redeployed `server/api.php` to the XAMPP API folder.
+- Verification: PHP syntax check passed for `server/api.php`.

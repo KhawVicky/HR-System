@@ -20,7 +20,7 @@ export function HRManagement() {
       subtitle="Monitor HR processing performance and manage internal user accounts."
       useCard={false}
     >
-      <Tabs defaultValue="efficiency" className="space-y-6">
+      <Tabs defaultValue="efficiency" className="relative space-y-6">
         <TabsList>
           <TabsTrigger value="efficiency">
             <BarChart3 className="mr-2 h-4 w-4" />
@@ -37,7 +37,7 @@ export function HRManagement() {
         </TabsContent>
 
         <TabsContent value="users" className="space-y-6">
-          <UserManagementPage embedded />
+          <UserManagementPage embedded alignToolbarWithTabs />
         </TabsContent>
       </Tabs>
     </PageLayout>

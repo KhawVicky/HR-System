@@ -94,3 +94,4 @@
 - Normalized rejection audit actions so rejection emails and direct rejections both appear as `Rejected Candidate` / `reject_candidate`, avoiding duplicate rejection action types in HR action history.
 - Normalized interview audit actions so interview status/email actions both appear as `Sent Interview Email` / `send_interview_email`, avoiding duplicate interview action types in HR action history.
 - Updated the HR Dashboard Overview to three clickable DB-driven cards: Active Jobs, New Applications, and Pending Reviews. Added `/jobs?status=active` job management filtering and `/applications?filter=last24|pending` application list filtering for dashboard drill-down.
+- Updated HR Efficiency Recent Processing Details to match the application list spacing and Candidate cell style, including candidate icon, name, and email loaded from the database.

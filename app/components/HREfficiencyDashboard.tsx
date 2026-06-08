@@ -1,5 +1,6 @@
 import { PageLayout } from "./PageLayout";
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import {
   Card,
   CardContent,
@@ -10,7 +11,7 @@ import {
   Clock,
   TrendingUp,
   Users,
-  CheckCircle,
+  UserRound,
 } from "lucide-react";
 import {
   BarChart,
@@ -39,6 +40,8 @@ import { LoadingState } from "./LoadingState";
 
 type CandidateProcessing = {
   candidateName: string;
+  candidateEmail: string;
+  jobId: number;
   jobTitle: string;
   applicationDate: string;
   interviewDate: string;
@@ -303,49 +306,75 @@ export function HREfficiencyDashboard({
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="pb-3 text-left text-sm font-semibold text-slate-900">
+              <table className="w-full min-w-[1100px] table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[30%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[18%]" />
+                </colgroup>
+                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-6 py-4">
                       Candidate
                     </th>
-                    <th className="pb-3 text-left text-sm font-semibold text-slate-900">
+                    <th className="px-6 py-4">
                       Job Title
                     </th>
-                    <th className="pb-3 text-left text-sm font-semibold text-slate-900">
+                    <th className="px-6 py-4">
                       Application Date
                     </th>
-                    <th className="pb-3 text-left text-sm font-semibold text-slate-900">
+                    <th className="px-6 py-4">
                       Interview Date
                     </th>
-                    <th className="pb-3 text-left text-sm font-semibold text-slate-900">
+                    <th className="px-6 py-4">
                       Processing Time
                     </th>
-                    <th className="pb-3 text-left text-sm font-semibold text-slate-900">
+                    <th className="px-6 py-4">
                       HR Assigned
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-100">
                   {pagedProcessingData.map((item, index) => (
-                    <tr key={index}>
-                      <td className="py-3 text-sm text-slate-900">
-                        {item.candidateName}
+                    <tr
+                      key={index}
+                      className="transition-colors hover:bg-slate-50"
+                    >
+                      <td className="px-6 py-5">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="shrink-0 rounded-full bg-blue-50 p-2">
+                            <UserRound className="h-4 w-4 text-[#003B7A]" />
+                          </span>
+                          <div className="min-w-0">
+                            <Link
+                              to={`/jobs/${item.jobId}/candidates?search=${encodeURIComponent(item.candidateEmail)}`}
+                              className="block max-w-full break-words font-medium leading-snug text-slate-900 hover:text-[#003B7A]"
+                            >
+                              {item.candidateName}
+                            </Link>
+                            <p className="mt-1 break-all text-xs text-slate-500">
+                              {item.candidateEmail}
+                            </p>
+                          </div>
+                        </div>
                       </td>
-                      <td className="py-3 text-sm text-slate-600">
+                      <td className="px-6 py-5 align-top leading-snug text-slate-600 [overflow-wrap:anywhere]">
                         {item.jobTitle}
                       </td>
-                      <td className="py-3 text-sm text-slate-600">
+                      <td className="whitespace-nowrap px-6 py-5 text-slate-600">
                         {new Date(
                           item.applicationDate,
                         ).toLocaleDateString("en-MY")}
                       </td>
-                      <td className="py-3 text-sm text-slate-600">
+                      <td className="whitespace-nowrap px-6 py-5 text-slate-600">
                         {new Date(
                           item.interviewDate,
                         ).toLocaleDateString("en-MY")}
                       </td>
-                      <td className="py-3">
+                      <td className="whitespace-nowrap px-6 py-5">
                         <span
                           className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
                             item.processingDays <= 3
@@ -358,7 +387,7 @@ export function HREfficiencyDashboard({
                           {item.processingDays} days
                         </span>
                       </td>
-                      <td className="py-3 text-sm text-slate-600">
+                      <td className="px-6 py-5 leading-snug text-slate-600 [overflow-wrap:anywhere]">
                         {item.hrAssigned}
                       </td>
                     </tr>

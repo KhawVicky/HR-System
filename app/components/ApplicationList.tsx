@@ -211,9 +211,9 @@ export function ApplicationList() {
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-md">
             <table className="w-full min-w-[1120px] table-fixed text-sm">
               <colgroup>
-                <col className="w-[34%]" />
-                <col className="w-[16%]" />
+                <col className="w-[30%]" />
                 <col className="w-[18%]" />
+                <col className="w-[20%]" />
                 <col className="w-[12%]" />
                 <col className="w-[8%]" />
                 <col className="w-[12%]" />

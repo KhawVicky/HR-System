@@ -185,10 +185,12 @@ function formatActionTypeLabel(actionType: string) {
 
 type UserManagementPageProps = {
   embedded?: boolean;
+  alignToolbarWithTabs?: boolean;
 };
 
 export function UserManagementPage({
   embedded = false,
+  alignToolbarWithTabs = false,
 }: UserManagementPageProps) {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
@@ -540,7 +542,13 @@ export function UserManagementPage({
         <LoadingState title="Loading user accounts" />
       ) : (
       <div className="space-y-6">
-        <div className="flex justify-end">
+        <div
+          className={
+            alignToolbarWithTabs
+              ? "flex justify-end sm:absolute sm:right-0 sm:top-0 sm:z-10"
+              : "flex justify-end"
+          }
+        >
           <Dialog
             open={openCreate}
             onOpenChange={setOpenCreate}
@@ -1038,7 +1046,13 @@ export function UserManagementPage({
                 className="border-0 shadow-none"
               />
             ) : filteredActionHistory.length > 0 ? (
-              <table className="w-full min-w-[920px] text-sm">
+              <table className="w-full min-w-[920px] table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[25%]" />
+                  <col className="w-[30%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[25%]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-xs font-semibold tracking-wide text-slate-500">
                     <th className="px-3 pb-4">Candidate</th>
@@ -1054,12 +1068,12 @@ export function UserManagementPage({
                       className="align-top transition-colors hover:bg-slate-50"
                     >
                       <td className="px-3 py-5">
-                        <p className="text-slate-900">
+                        <p className="break-words text-slate-900 [overflow-wrap:anywhere]">
                           {action.candidateName || "-"}
                         </p>
                       </td>
                       <td className="px-3 py-5">
-                        <p className="text-slate-900">
+                        <p className="break-words text-slate-900">
                           {action.jobTitle || "-"}
                         </p>
                       </td>
