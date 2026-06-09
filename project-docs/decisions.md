@@ -26,3 +26,4 @@
 - The system has no Admin role. HR Efficiency and User Management are visible only to Hiring Manager users.
 - Project memory is stored in `project-docs/`.
 - Main project rules are stored in `AGENTS.md`.
+- HR Efficiency only includes applications that HR has reviewed. Reviewed and shortlisted applications show their review action time but leave Processing Time blank because the workflow is incomplete. Processing time is only measured from submission to the latest successful interview/rejection email after the current submission.

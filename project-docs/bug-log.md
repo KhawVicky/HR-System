@@ -26,3 +26,9 @@
 - Cause: The deployed XAMPP API still used the older pending condition `application_status = 'new' OR reviewed_at IS NULL`. Some reviewed seed/demo rows had a null `reviewed_at`, so they were incorrectly included.
 - Fix: Pending review now means only `application_status = 'new'` in both dashboard count and application list filtering, then redeployed `server/api.php` to the XAMPP API folder.
 - Verification: PHP syntax check passed for `server/api.php`.
+
+## 2026-06-09 - HR Efficiency API Returned Server Error
+
+- Symptom: Opening HR Efficiency showed repeated `Server error` messages after the processing timeline update.
+- Cause: The latest-email subqueries joined `email_logs` and `applications` but selected unqualified `application_id` and `id` columns, causing MariaDB to report an ambiguous column error.
+- Fix: Qualified the grouped fields as `email_log.application_id` and `MAX(email_log.id)` in both HR Efficiency queries.

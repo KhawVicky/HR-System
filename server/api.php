@@ -1659,13 +1659,27 @@ function hr_efficiency(mysqli $db): void
         $db,
         "SELECT
           u.full_name AS hrName,
-          COUNT(a.id) AS totalCandidates,
-          ROUND(AVG(TIMESTAMPDIFF(HOUR, a.submitted_at, COALESCE(a.reviewed_at, NOW())) / 24), 1) AS avgProcessingDays,
+          COUNT(latest_email.application_id) AS totalCandidates,
+          ROUND(AVG(GREATEST(0, TIMESTAMPDIFF(MINUTE, a.submitted_at, latest_email.sent_at))) / 60, 1) AS avgProcessingHours,
           SUM(CASE WHEN a.application_status IN ('shortlisted', 'interview') THEN 1 ELSE 0 END) AS shortlisted,
           SUM(CASE WHEN a.application_status = 'rejected' THEN 1 ELSE 0 END) AS rejected
          FROM users u
          LEFT JOIN applications a ON a.assigned_hr_user_id = u.id
+         LEFT JOIN (
+           SELECT el.application_id, el.sent_at
+           FROM email_logs el
+           JOIN (
+             SELECT email_log.application_id, MAX(email_log.id) AS latest_email_id
+             FROM email_logs email_log
+             JOIN applications current_application ON current_application.id = email_log.application_id
+             WHERE email_log.status = 'sent'
+               AND email_log.email_type IN ('interview', 'reject')
+               AND email_log.sent_at >= current_application.submitted_at
+             GROUP BY email_log.application_id
+           ) latest ON latest.latest_email_id = el.id
+         ) latest_email ON latest_email.application_id = a.id
          WHERE u.role_id IN (1, 2)
+           AND a.reviewed_at IS NOT NULL
          GROUP BY u.id
          ORDER BY totalCandidates DESC"
     );
@@ -1676,14 +1690,39 @@ function hr_efficiency(mysqli $db): void
           c.email AS candidateEmail,
           j.id AS jobId,
           j.title AS jobTitle,
-          DATE(a.submitted_at) AS applicationDate,
-          DATE(COALESCE(a.reviewed_at, a.submitted_at)) AS interviewDate,
-          GREATEST(1, TIMESTAMPDIFF(DAY, a.submitted_at, COALESCE(a.reviewed_at, NOW()))) AS processingDays,
+          a.submitted_at AS applicationDate,
+          COALESCE(latest_email.sent_at, a.reviewed_at) AS lastActionDate,
+          CASE
+            WHEN latest_email.sent_at IS NULL THEN NULL
+            ELSE GREATEST(0, TIMESTAMPDIFF(MINUTE, a.submitted_at, latest_email.sent_at))
+          END AS processingMinutes,
+          CASE latest_email.email_type
+            WHEN 'interview' THEN 'interview_email_sent'
+            WHEN 'reject' THEN 'rejection_email_sent'
+            ELSE CASE
+              WHEN a.is_shortlisted = 1 THEN 'shortlisted'
+              ELSE 'reviewed'
+            END
+          END AS processingStatus,
           COALESCE(u.full_name, 'Unassigned') AS hrAssigned
          FROM applications a
          JOIN candidates c ON c.id = a.candidate_id
          JOIN jobs j ON j.id = a.job_id
          LEFT JOIN users u ON u.id = a.assigned_hr_user_id
+         LEFT JOIN (
+           SELECT el.application_id, el.email_type, el.sent_at
+           FROM email_logs el
+           JOIN (
+             SELECT email_log.application_id, MAX(email_log.id) AS latest_email_id
+             FROM email_logs email_log
+             JOIN applications current_application ON current_application.id = email_log.application_id
+             WHERE email_log.status = 'sent'
+               AND email_log.email_type IN ('interview', 'reject')
+               AND email_log.sent_at >= current_application.submitted_at
+             GROUP BY email_log.application_id
+           ) latest ON latest.latest_email_id = el.id
+         ) latest_email ON latest_email.application_id = a.id
+         WHERE a.reviewed_at IS NOT NULL
          ORDER BY a.submitted_at DESC"
     );
 

@@ -44,12 +44,64 @@ type CandidateProcessing = {
   jobId: number;
   jobTitle: string;
   applicationDate: string;
-  interviewDate: string;
-  processingDays: number;
+  lastActionDate: string | null;
+  processingMinutes: number | null;
+  processingStatus:
+    | "reviewed"
+    | "shortlisted"
+    | "interview_email_sent"
+    | "rejection_email_sent";
   hrAssigned: string;
 };
 
 const PROCESSING_DETAILS_PER_PAGE = 15;
+
+const formatDateTime = (value: string | null) => {
+  if (!value) return "-";
+
+  return new Date(value)
+    .toLocaleString("en-MY", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+    .replace(/\b(am|pm)\b/g, (period) => period.toUpperCase());
+};
+
+const formatProcessingTime = (minutes: number | null) => {
+  if (minutes === null) return "";
+  if (minutes < 60) return "Less than 1 hour";
+
+  const totalHours = Math.floor(minutes / 60);
+  if (totalHours < 24) {
+    return `${totalHours} ${totalHours === 1 ? "hour" : "hours"}`;
+  }
+
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const dayLabel = `${days} ${days === 1 ? "day" : "days"}`;
+
+  return hours === 0
+    ? dayLabel
+    : `${dayLabel} ${hours} ${hours === 1 ? "hour" : "hours"}`;
+};
+
+const processingStatusLabel = {
+  reviewed: "Reviewed",
+  shortlisted: "Shortlisted",
+  interview_email_sent: "Interview email sent",
+  rejection_email_sent: "Rejection email sent",
+};
+
+const processingStatusClass = {
+  reviewed: "bg-green-50 text-green-700",
+  shortlisted: "bg-amber-50 text-amber-700",
+  interview_email_sent: "bg-blue-50 text-blue-700",
+  rejection_email_sent: "bg-red-50 text-red-700",
+};
 
 type HREfficiencyDashboardProps = {
   embedded?: boolean;
@@ -78,26 +130,30 @@ export function HREfficiencyDashboard({
       .finally(() => setIsLoadingProcessing(false));
   }, []);
 
-  const totalCandidates = processingData.length;
+  const processedApplications = processingData.filter(
+    (item) => item.processingMinutes !== null,
+  );
+  const totalCandidates = processedApplications.length;
   const avgProcessingTime =
     totalCandidates === 0
-      ? 0
-      : processingData.reduce(
-      (sum, item) => sum + item.processingDays,
-      0,
+      ? null
+      : processedApplications.reduce(
+          (sum, item) => sum + (item.processingMinutes ?? 0),
+          0,
         ) / totalCandidates;
 
-  const hrPerformance = processingData.reduce(
+  const hrPerformance = processedApplications.reduce(
     (acc, item) => {
       if (!acc[item.hrAssigned]) {
         acc[item.hrAssigned] = {
           name: item.hrAssigned,
           totalCandidates: 0,
-          totalDays: 0,
+          totalMinutes: 0,
         };
       }
       acc[item.hrAssigned].totalCandidates += 1;
-      acc[item.hrAssigned].totalDays += item.processingDays;
+      acc[item.hrAssigned].totalMinutes +=
+        item.processingMinutes ?? 0;
       return acc;
     },
     {} as Record<
@@ -105,7 +161,7 @@ export function HREfficiencyDashboard({
       {
         name: string;
         totalCandidates: number;
-        totalDays: number;
+        totalMinutes: number;
       }
     >,
   );
@@ -113,14 +169,16 @@ export function HREfficiencyDashboard({
   const hrStats = Object.values(hrPerformance).map((hr) => ({
     id: hr.name,
     name: hr.name,
-    avgDays:
-      Math.round((hr.totalDays / hr.totalCandidates) * 10) / 10,
+    avgHours:
+      Math.round(
+        (hr.totalMinutes / hr.totalCandidates / 60) * 10,
+      ) / 10,
     candidates: hr.totalCandidates,
   }));
 
-  const dailyTrend = processingData.reduce(
+  const dailyTrend = processedApplications.reduce(
     (acc, item) => {
-      const date = item.applicationDate;
+      const date = item.applicationDate.slice(0, 10);
       if (!acc[date]) {
         acc[date] = {
           date,
@@ -130,7 +188,7 @@ export function HREfficiencyDashboard({
         };
       }
       acc[date].applications += 1;
-      acc[date].avgProcessing += item.processingDays;
+      acc[date].avgProcessing += (item.processingMinutes ?? 0) / 60;
       acc[date].count += 1;
       return acc;
     },
@@ -156,15 +214,18 @@ export function HREfficiencyDashboard({
         month: "short",
         day: "numeric",
       }),
-      avgDays:
+      avgHours:
         Math.round((item.avgProcessing / item.count) * 10) / 10,
     }));
 
-  const fastestProcessing = Math.min(
-    ...(processingData.length
-      ? processingData.map((item) => item.processingDays)
-      : [0]),
-  );
+  const fastestProcessing =
+    processedApplications.length > 0
+      ? Math.min(
+          ...processedApplications.map(
+            (item) => item.processingMinutes ?? 0,
+          ),
+        )
+      : null;
   const processingPageCount = Math.max(
     1,
     Math.ceil(
@@ -194,8 +255,11 @@ export function HREfficiencyDashboard({
                   Avg Processing Time
                 </p>
                 <p className="mt-1 text-3xl font-bold text-slate-900">
-                  {avgProcessingTime.toFixed(1)}{" "}
-                  <span className="text-lg">days</span>
+                  {formatProcessingTime(
+                    avgProcessingTime === null
+                      ? null
+                      : Math.round(avgProcessingTime),
+                  )}
                 </p>
               </div>
               <div className="rounded-2xl bg-blue-50 p-3">
@@ -211,8 +275,7 @@ export function HREfficiencyDashboard({
                   Fastest Processing
                 </p>
                 <p className="mt-1 text-3xl font-bold text-slate-900">
-                  {fastestProcessing}{" "}
-                  <span className="text-lg">days</span>
+                  {formatProcessingTime(fastestProcessing)}
                 </p>
               </div>
               <div className="rounded-2xl bg-green-50 p-3">
@@ -260,10 +323,10 @@ export function HREfficiencyDashboard({
                   <Tooltip key="tooltip-line" />
                   <Line
                     type="monotone"
-                    dataKey="avgDays"
+                    dataKey="avgHours"
                     stroke="#003B7A"
                     strokeWidth={2}
-                    key="line-avgDays"
+                    key="line-avgHours"
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -273,7 +336,7 @@ export function HREfficiencyDashboard({
             <CardHeader>
               <CardTitle>HR Performance Comparison</CardTitle>
               <p className="mt-1 text-sm text-slate-500">
-                Average processing time by HR staff (in days)
+                Average processing time by HR staff (in hours)
               </p>
             </CardHeader>
             <CardContent>
@@ -287,9 +350,9 @@ export function HREfficiencyDashboard({
                   <YAxis key="yaxis-bar" />
                   <Tooltip key="tooltip-bar" />
                   <Bar
-                    dataKey="avgDays"
+                    dataKey="avgHours"
                     fill="#003B7A"
-                    key="bar-avgDays"
+                    key="bar-avgHours"
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -301,38 +364,38 @@ export function HREfficiencyDashboard({
           <CardHeader>
             <CardTitle>Recent Processing Details</CardTitle>
             <p className="mt-1 text-sm text-slate-500">
-              Application to interview timeline for April 2026
+              Application processing timeline based on HR actions.
             </p>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px] table-fixed text-sm">
+            <div className="overflow-hidden">
+              <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col className="w-[30%]" />
-                  <col className="w-[20%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[10%]" />
+                  <col className="w-[24%]" />
                   <col className="w-[18%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[10%]" />
                 </colgroup>
                 <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-6 py-4">
+                    <th className="px-3 py-4">
                       Candidate
                     </th>
-                    <th className="px-6 py-4">
+                    <th className="px-3 py-4">
                       Job Title
                     </th>
-                    <th className="px-6 py-4">
+                    <th className="px-3 py-4">
                       Application Date
                     </th>
-                    <th className="px-6 py-4">
-                      Interview Date
+                    <th className="px-3 py-4">
+                      Last Action Date
                     </th>
-                    <th className="px-6 py-4">
+                    <th className="px-3 py-4">
                       Processing Time
                     </th>
-                    <th className="px-6 py-4">
+                    <th className="px-3 py-4">
                       HR Assigned
                     </th>
                   </tr>
@@ -343,7 +406,7 @@ export function HREfficiencyDashboard({
                       key={index}
                       className="transition-colors hover:bg-slate-50"
                     >
-                      <td className="px-6 py-5">
+                      <td className="px-3 py-5">
                         <div className="flex min-w-0 items-center gap-3">
                           <span className="shrink-0 rounded-full bg-blue-50 p-2">
                             <UserRound className="h-4 w-4 text-[#003B7A]" />
@@ -361,33 +424,26 @@ export function HREfficiencyDashboard({
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-5 align-top leading-snug text-slate-600 [overflow-wrap:anywhere]">
+                      <td className="px-3 py-5 align-top leading-snug text-slate-600 [overflow-wrap:anywhere]">
                         {item.jobTitle}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-slate-600">
-                        {new Date(
-                          item.applicationDate,
-                        ).toLocaleDateString("en-MY")}
+                      <td className="px-3 py-5 leading-snug text-slate-600">
+                        {formatDateTime(item.applicationDate)}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-5 text-slate-600">
-                        {new Date(
-                          item.interviewDate,
-                        ).toLocaleDateString("en-MY")}
+                      <td className="px-3 py-5 leading-snug text-slate-600">
+                        {formatDateTime(item.lastActionDate)}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-5">
+                      <td className="px-3 py-5">
+                        <p className="font-medium leading-snug text-slate-700">
+                          {formatProcessingTime(item.processingMinutes)}
+                        </p>
                         <span
-                          className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
-                            item.processingDays <= 3
-                              ? "bg-green-50 text-green-700"
-                              : item.processingDays <= 5
-                                ? "bg-amber-50 text-amber-700"
-                                : "bg-red-50 text-red-700"
-                          }`}
+                          className={`mt-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${processingStatusClass[item.processingStatus]}`}
                         >
-                          {item.processingDays} days
+                          {processingStatusLabel[item.processingStatus]}
                         </span>
                       </td>
-                      <td className="px-6 py-5 leading-snug text-slate-600 [overflow-wrap:anywhere]">
+                      <td className="px-3 py-5 leading-snug text-slate-600 [overflow-wrap:anywhere]">
                         {item.hrAssigned}
                       </td>
                     </tr>
