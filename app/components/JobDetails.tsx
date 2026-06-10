@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { PageLayout } from "./PageLayout";
+import { formatDisplayDate } from "../lib/date";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -336,7 +337,7 @@ export function JobDetails() {
               <div className="flex items-center gap-1">
                 <Calendar className="w-4 h-4" />
                 Posted{" "}
-                {new Date(job.createdAt).toLocaleDateString()}
+                {formatDisplayDate(job.createdAt)}
               </div>
             </div>
 

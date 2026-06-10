@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router";
 import { getCompactPageItems } from "../lib/pagination";
+import { formatDisplayDate } from "../lib/date";
 import { PageLayout } from "./PageLayout";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -292,7 +293,7 @@ export function DepartmentJobs() {
                   </CardTitle>
                   <CardDescription>
                     Created on{" "}
-                    {new Date(job.createdAt).toLocaleDateString()}
+                    {formatDisplayDate(job.createdAt)}
                   </CardDescription>
                 </div>
                 <Badge

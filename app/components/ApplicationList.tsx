@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 
 import { apiFetch } from "../lib/api";
+import { formatDisplayDateTime } from "../lib/date";
 import { getCompactPageItems } from "../lib/pagination";
 import { LoadingState } from "./LoadingState";
 import { PageLayout } from "./PageLayout";
@@ -65,14 +66,7 @@ const eligibilityBadgeClass = (status: string) => {
   return "bg-amber-50 text-amber-700 border-amber-200";
 };
 
-const formatDate = (value: string) =>
-  new Date(value).toLocaleString("en-MY", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+const formatDate = (value: string) => formatDisplayDateTime(value);
 
 const formatStatus = (value: string) =>
   value.replace(/_/g, " ").toUpperCase();

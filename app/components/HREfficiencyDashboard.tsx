@@ -26,6 +26,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { apiFetch } from "../lib/api";
+import { formatDisplayDate, formatDisplayDateTime } from "../lib/date";
 import { getCompactPageItems } from "../lib/pagination";
 import {
   Pagination,
@@ -57,36 +58,29 @@ type CandidateProcessing = {
 const PROCESSING_DETAILS_PER_PAGE = 15;
 
 const formatDateTime = (value: string | null) => {
-  if (!value) return "-";
-
-  return new Date(value)
-    .toLocaleString("en-MY", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    })
-    .replace(/\b(am|pm)\b/g, (period) => period.toUpperCase());
+  return formatDisplayDateTime(value);
 };
 
 const formatProcessingTime = (minutes: number | null) => {
   if (minutes === null) return "";
-  if (minutes < 60) return "Less than 1 hour";
-
-  const totalHours = Math.floor(minutes / 60);
-  if (totalHours < 24) {
-    return `${totalHours} ${totalHours === 1 ? "hour" : "hours"}`;
+  if (minutes < 60) {
+    return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
   }
 
+  const totalHours = Math.floor(minutes / 60);
   const days = Math.floor(totalHours / 24);
   const hours = totalHours % 24;
-  const dayLabel = `${days} ${days === 1 ? "day" : "days"}`;
+  const parts: string[] = [];
 
-  return hours === 0
-    ? dayLabel
-    : `${dayLabel} ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  if (days > 0) {
+    parts.push(`${days} ${days === 1 ? "day" : "days"}`);
+  }
+
+  if (hours > 0) {
+    parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
+  }
+
+  return parts.join(" ");
 };
 
 const processingStatusLabel = {
@@ -210,10 +204,7 @@ export function HREfficiencyDashboard({
     )
     .map((item) => ({
       id: item.date,
-      date: new Date(item.date).toLocaleDateString("en-MY", {
-        month: "short",
-        day: "numeric",
-      }),
+      date: formatDisplayDate(item.date),
       avgHours:
         Math.round((item.avgProcessing / item.count) * 10) / 10,
     }));

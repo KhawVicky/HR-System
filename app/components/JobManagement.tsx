@@ -4,6 +4,7 @@ import { Briefcase, MapPin, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { apiFetch, type JobSummary } from "../lib/api";
+import { formatDisplayDate } from "../lib/date";
 import { getCompactPageItems } from "../lib/pagination";
 import { LoadingState } from "./LoadingState";
 import { PageLayout } from "./PageLayout";
@@ -30,9 +31,7 @@ const statusBadgeClass = (status: string) => {
 };
 
 const formatDate = (value: string | null) => {
-  if (!value) return "-";
-
-  return new Date(value).toLocaleDateString();
+  return formatDisplayDate(value);
 };
 
 export function JobManagement() {
@@ -111,7 +110,7 @@ export function JobManagement() {
               <div className="relative w-full md:w-[420px]">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
-                  placeholder="Search job title, department or location"
+                  placeholder="Search job title or department"
                   value={searchQuery}
                   onChange={(event) =>
                     setSearchQuery(event.target.value)

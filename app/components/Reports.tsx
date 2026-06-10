@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { formatDisplayDate } from "../lib/date";
 
 export function Reports() {
   const navigate = useNavigate();
@@ -146,7 +147,7 @@ export function Reports() {
                         className="w-full justify-start text-left font-normal"
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dateFrom ? format(dateFrom, "PPP") : "Pick a date"}
+                        {dateFrom ? formatDisplayDate(dateFrom) : "Pick a date"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
@@ -169,7 +170,7 @@ export function Reports() {
                         className="w-full justify-start text-left font-normal"
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dateTo ? format(dateTo, "PPP") : "Pick a date"}
+                        {dateTo ? formatDisplayDate(dateTo) : "Pick a date"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
@@ -345,19 +346,19 @@ export function Reports() {
                 <div className="p-3 border border-slate-200 rounded">
                   <div className="font-medium mb-1">Candidate Report</div>
                   <div className="text-xs text-slate-500">
-                    Exported on March 30, 2026
+                    Exported on 30/03/2026
                   </div>
                 </div>
                 <div className="p-3 border border-slate-200 rounded">
                   <div className="font-medium mb-1">Attendance Report</div>
                   <div className="text-xs text-slate-500">
-                    Exported on March 28, 2026
+                    Exported on 28/03/2026
                   </div>
                 </div>
                 <div className="p-3 border border-slate-200 rounded">
                   <div className="font-medium mb-1">Job Analytics</div>
                   <div className="text-xs text-slate-500">
-                    Exported on March 25, 2026
+                    Exported on 25/03/2026
                   </div>
                 </div>
               </div>

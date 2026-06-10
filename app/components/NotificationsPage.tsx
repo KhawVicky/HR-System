@@ -14,21 +14,13 @@ import {
   PaginationPrevious,
 } from "./ui/pagination";
 import { apiFetch, getStoredUser, NotificationItem, NotificationResponse } from "../lib/api";
+import { formatDisplayDateTime } from "../lib/date";
 import { LoadingState } from "./LoadingState";
 
 const NOTIFICATIONS_PER_PAGE = 10;
 
 function formatNotificationDate(value: string) {
-  if (!value) return "-";
-  const date = new Date(value.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("en-MY", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDisplayDateTime(value);
 }
 
 export function NotificationsPage() {

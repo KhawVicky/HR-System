@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch, getStoredUser } from "../lib/api";
+import { formatDisplayDate } from "../lib/date";
 import { LoadingState } from "./LoadingState";
 import {
   Tooltip,
@@ -1316,9 +1317,7 @@ export function CandidateList() {
 
                           <div className="flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
-                            {new Date(
-                              candidate.appliedDate,
-                            ).toLocaleDateString()}
+                            {formatDisplayDate(candidate.appliedDate)}
                           </div>
 
                           {candidate.experience && (
@@ -1520,7 +1519,7 @@ export function CandidateList() {
             </div>
 
             <div className="font-semibold text-slate-800">
-              {job.submittedDate}
+              {formatDisplayDate(job.submittedDate)}
             </div>
 
             <div className="font-semibold text-slate-800">
@@ -1878,7 +1877,7 @@ export function CandidateList() {
                 <Input
                   id="interviewDateTime"
                   type="text"
-                  placeholder="Example: 20/52026, 10:00 AM / 21/5/2026, 2:30 PM / 22/5/2026, 11:00 AM"
+                  placeholder="Example: 20/05/2026, 10:00 AM / 21/05/2026, 2:30 PM / 22/05/2026, 11:00 AM"
                   value={interviewDateTime}
                   onChange={(e) =>
                     setInterviewDateTime(e.target.value)

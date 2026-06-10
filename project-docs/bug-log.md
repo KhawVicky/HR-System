@@ -32,3 +32,10 @@
 - Symptom: Opening HR Efficiency showed repeated `Server error` messages after the processing timeline update.
 - Cause: The latest-email subqueries joined `email_logs` and `applications` but selected unqualified `application_id` and `id` columns, causing MariaDB to report an ambiguous column error.
 - Fix: Qualified the grouped fields as `email_log.application_id` and `MAX(email_log.id)` in both HR Efficiency queries.
+
+## 2026-06-10 - XAMPP MySQL Stopped Unexpectedly
+
+- Symptom: XAMPP MySQL started briefly and then stopped unexpectedly.
+- Cause: MariaDB had a corrupted Aria checkpoint/control log and a corrupted InnoDB page in the system table `mysql.gtid_slave_pos`. Recreating the Aria control log also left several MariaDB system tables requiring repair.
+- Fix: Backed up the damaged Aria logs and `gtid_slave_pos` files, repaired the Aria system tables, temporarily started MariaDB with `innodb_force_recovery=3`, rebuilt `mysql.gtid_slave_pos`, then repaired and checked the remaining `mysql` system tables.
+- Verification: MariaDB restarted normally without recovery mode, remained alive after a delayed ping, all `uwc_hr_decision_support` tables passed `mysqlcheck`, all `mysql` system tables passed `mysqlcheck`, and the project database returned 449 applications.

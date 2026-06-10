@@ -67,6 +67,7 @@ import {
 } from "./ui/pagination";
 import { toast } from "sonner";
 import { apiFetch } from "../lib/api";
+import { formatDisplayDate, formatDisplayDateTime } from "../lib/date";
 import { getCompactPageItems } from "../lib/pagination";
 import { LoadingState } from "./LoadingState";
 
@@ -142,17 +143,7 @@ function getStatusBadgeClass(status: UserStatus) {
 }
 
 function formatActionDate(value: string) {
-  if (!value) return "-";
-  const date = new Date(value.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleString("en-MY", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDisplayDateTime(value);
 }
 
 function getActionBadgeClass(actionType: string) {
@@ -1706,7 +1697,7 @@ export function UserManagementPage({
                         </TableCell>
 
                         <TableCell className="text-slate-600">
-                          {user.createdAt}
+                          {formatDisplayDate(user.createdAt)}
                         </TableCell>
 
                         <TableCell
@@ -1944,7 +1935,7 @@ function UserManagementBody({
                       </TableCell>
 
                       <TableCell className="text-slate-600">
-                        {user.createdAt}
+                        {formatDisplayDate(user.createdAt)}
                       </TableCell>
 
                       <TableCell

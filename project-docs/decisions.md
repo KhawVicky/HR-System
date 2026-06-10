@@ -27,3 +27,4 @@
 - Project memory is stored in `project-docs/`.
 - Main project rules are stored in `AGENTS.md`.
 - HR Efficiency only includes applications that HR has reviewed. Reviewed and shortlisted applications show their review action time but leave Processing Time blank because the workflow is incomplete. Processing time is only measured from submission to the latest successful interview/rejection email after the current submission.
+- User-visible dates use `DD/MM/YYYY`; user-visible timestamps use `DD/MM/YYYY, hh:mm AM/PM`. API values, form inputs, sorting values, and export filenames keep their machine-readable formats.

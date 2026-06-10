@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch } from "../lib/api";
+import { formatDisplayDate } from "../lib/date";
 import { LoadingState } from "./LoadingState";
 
 type AttendanceRecord = {
@@ -289,7 +290,7 @@ export function AttendanceAnalytics() {
                       </div>
                       <div className="text-sm text-slate-600 space-y-1">
                         <p>Position: {record.jobTitle}</p>
-                        <p>Date: {new Date(record.scheduledDate).toLocaleDateString()}</p>
+                        <p>Date: {formatDisplayDate(record.scheduledDate)}</p>
                         {record.notes && <p className="italic">Notes: {record.notes}</p>}
                       </div>
                     </div>
