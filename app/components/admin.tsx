@@ -167,6 +167,10 @@ function getActionBadgeClass(actionType: string) {
 }
 
 function formatActionTypeLabel(actionType: string) {
+  if (actionType === "reject_candidate") {
+    return "Sent Rejected Email";
+  }
+
   return actionType
     .split("_")
     .filter(Boolean)

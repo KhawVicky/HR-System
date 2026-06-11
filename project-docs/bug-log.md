@@ -39,3 +39,29 @@
 - Cause: MariaDB had a corrupted Aria checkpoint/control log and a corrupted InnoDB page in the system table `mysql.gtid_slave_pos`. Recreating the Aria control log also left several MariaDB system tables requiring repair.
 - Fix: Backed up the damaged Aria logs and `gtid_slave_pos` files, repaired the Aria system tables, temporarily started MariaDB with `innodb_force_recovery=3`, rebuilt `mysql.gtid_slave_pos`, then repaired and checked the remaining `mysql` system tables.
 - Verification: MariaDB restarted normally without recovery mode, remained alive after a delayed ping, all `uwc_hr_decision_support` tables passed `mysqlcheck`, all `mysql` system tables passed `mysqlcheck`, and the project database returned 449 applications.
+
+## 2026-06-11 - HR Efficiency Job Title Was Not Vertically Centered
+
+- Symptom: Job titles appeared near the top of Recent Processing Details rows while the other values were vertically centered.
+- Cause: The Job Title table cell explicitly used `align-top`.
+- Fix: Changed the Job Title cell to `align-middle`.
+
+## 2026-06-11 - HR Efficiency Showed New Applications as Reviewed
+
+- Symptom: Recent Processing Details showed `Reviewed` for applications whose current database status and candidate card status were `New`.
+- Cause: The HR Efficiency API used `reviewed_at IS NOT NULL` to include rows and defaulted every non-shortlisted row without an email to `reviewed`, even when the current `application_status` was `new`.
+- Fix: Recent Processing Details and HR Efficiency summary now exclude current `new` applications. Without a successful email action, the status badge uses the current `application_status` instead of inferring it from `reviewed_at`. Existing `new` applications also had stale `reviewed_at` and assigned HR values cleared.
+
+## 2026-06-11 - Rejection Action Label Did Not Match Email Action
+
+- Symptom: Candidate Screening Action History displayed `Rejected Candidate` for rejection email actions.
+- Cause: Rejection audit records used the normalized internal type `reject_candidate` with the older `Rejected Candidate` display label.
+- Fix: Existing and future `reject_candidate` audit records now display `Sent Rejected Email`.
+
+## 2026-06-11 - MySQL Failed to Start After Project Table Corruption
+
+- Symptom: MariaDB started briefly and crashed, then rejected the local root account after the damaged project table was rebuilt.
+- Cause: The InnoDB indexes for `uwc_hr_decision_support.job_criteria` were corrupted. The MariaDB Aria privilege table `mysql.global_priv` also had checksum damage and lost its unreadable account rows during repair.
+- Fix: Exported a full project recovery backup and a separate readable `job_criteria` dump, rebuilt `job_criteria`, repaired all MariaDB system tables, and restored local-only XAMPP root accounts for `localhost`, `127.0.0.1`, and `::1`.
+- Backup: `C:\xampp\mysql\recovery_backup_20260611_2120`.
+- Verification: MariaDB runs normally without recovery flags, delayed `mysqladmin ping` returned alive, all project and MariaDB system tables passed `mysqlcheck`, and the project database returned 449 applications and 168 job criteria.

@@ -50,6 +50,9 @@ type CandidateProcessing = {
   processingStatus:
     | "reviewed"
     | "shortlisted"
+    | "interview"
+    | "rejected"
+    | "filtered_out"
     | "interview_email_sent"
     | "rejection_email_sent";
   hrAssigned: string;
@@ -83,9 +86,16 @@ const formatProcessingTime = (minutes: number | null) => {
   return parts.join(" ");
 };
 
+const formatChartDuration = (days: number) => {
+  return formatProcessingTime(Math.round(days * 24 * 60));
+};
+
 const processingStatusLabel = {
   reviewed: "Reviewed",
   shortlisted: "Shortlisted",
+  interview: "Interview",
+  rejected: "Rejected",
+  filtered_out: "Filtered Out",
   interview_email_sent: "Interview email sent",
   rejection_email_sent: "Rejection email sent",
 };
@@ -93,6 +103,9 @@ const processingStatusLabel = {
 const processingStatusClass = {
   reviewed: "bg-green-50 text-green-700",
   shortlisted: "bg-amber-50 text-amber-700",
+  interview: "bg-blue-50 text-blue-700",
+  rejected: "bg-red-50 text-red-700",
+  filtered_out: "bg-slate-100 text-slate-600",
   interview_email_sent: "bg-blue-50 text-blue-700",
   rejection_email_sent: "bg-red-50 text-red-700",
 };
@@ -163,9 +176,9 @@ export function HREfficiencyDashboard({
   const hrStats = Object.values(hrPerformance).map((hr) => ({
     id: hr.name,
     name: hr.name,
-    avgHours:
+    avgDays:
       Math.round(
-        (hr.totalMinutes / hr.totalCandidates / 60) * 10,
+        (hr.totalMinutes / hr.totalCandidates / 60 / 24) * 10,
       ) / 10,
     candidates: hr.totalCandidates,
   }));
@@ -205,8 +218,8 @@ export function HREfficiencyDashboard({
     .map((item) => ({
       id: item.date,
       date: formatDisplayDate(item.date),
-      avgHours:
-        Math.round((item.avgProcessing / item.count) * 10) / 10,
+      avgDays:
+        Math.round((item.avgProcessing / item.count / 24) * 10) / 10,
     }));
 
   const fastestProcessing =
@@ -299,7 +312,7 @@ export function HREfficiencyDashboard({
             <CardHeader>
               <CardTitle>Processing Time Trend</CardTitle>
               <p className="mt-1 text-sm text-slate-500">
-                Daily average processing time this month
+                Average processing time by application date (in days)
               </p>
             </CardHeader>
             <CardContent>
@@ -310,14 +323,23 @@ export function HREfficiencyDashboard({
                     key="grid-line"
                   />
                   <XAxis dataKey="date" key="xaxis-line" />
-                  <YAxis key="yaxis-line" />
-                  <Tooltip key="tooltip-line" />
+                  <YAxis
+                    key="yaxis-line"
+                    tickFormatter={(value) => `${value}d`}
+                  />
+                  <Tooltip
+                    key="tooltip-line"
+                    formatter={(value) => [
+                      formatChartDuration(Number(value)),
+                      "Average processing time",
+                    ]}
+                  />
                   <Line
                     type="monotone"
-                    dataKey="avgHours"
+                    dataKey="avgDays"
                     stroke="#003B7A"
                     strokeWidth={2}
-                    key="line-avgHours"
+                    key="line-avgDays"
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -327,7 +349,7 @@ export function HREfficiencyDashboard({
             <CardHeader>
               <CardTitle>HR Performance Comparison</CardTitle>
               <p className="mt-1 text-sm text-slate-500">
-                Average processing time by HR staff (in hours)
+                Average processing time by HR staff (in days)
               </p>
             </CardHeader>
             <CardContent>
@@ -338,12 +360,21 @@ export function HREfficiencyDashboard({
                     key="grid-bar"
                   />
                   <XAxis dataKey="name" key="xaxis-bar" />
-                  <YAxis key="yaxis-bar" />
-                  <Tooltip key="tooltip-bar" />
+                  <YAxis
+                    key="yaxis-bar"
+                    tickFormatter={(value) => `${value}d`}
+                  />
+                  <Tooltip
+                    key="tooltip-bar"
+                    formatter={(value) => [
+                      formatChartDuration(Number(value)),
+                      "Average processing time",
+                    ]}
+                  />
                   <Bar
-                    dataKey="avgHours"
+                    dataKey="avgDays"
                     fill="#003B7A"
-                    key="bar-avgHours"
+                    key="bar-avgDays"
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -415,7 +446,7 @@ export function HREfficiencyDashboard({
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-5 align-top leading-snug text-slate-600 [overflow-wrap:anywhere]">
+                      <td className="px-3 py-5 align-middle leading-snug text-slate-600 [overflow-wrap:anywhere]">
                         {item.jobTitle}
                       </td>
                       <td className="px-3 py-5 leading-snug text-slate-600">

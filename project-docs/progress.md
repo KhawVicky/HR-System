@@ -91,9 +91,12 @@
 - Combined HR Efficiency and User Management into one HR Management workspace with tabs, so Manager users use a single header entry for both features.
 - Added `hr_action_logs` for candidate screening audit history. Application review, shortlist, interview email, rejection email, and status actions are recorded with HR user, candidate, job post, action type, details, and timestamp.
 - User Management now has a View Action History popup from the account action menu to inspect what each HR user clicked or changed during candidate screening.
-- Normalized rejection audit actions so rejection emails and direct rejections both appear as `Rejected Candidate` / `reject_candidate`, avoiding duplicate rejection action types in HR action history.
+- Normalized rejection audit actions so rejection emails and direct rejections both appear as `Sent Rejected Email` / `reject_candidate`, avoiding duplicate rejection action types in HR action history.
 - Normalized interview audit actions so interview status/email actions both appear as `Sent Interview Email` / `send_interview_email`, avoiding duplicate interview action types in HR action history.
 - Updated the HR Dashboard Overview to three clickable DB-driven cards: Active Jobs, New Applications, and Pending Reviews. Added `/jobs?status=active` job management filtering and `/applications?filter=last24|pending` application list filtering for dashboard drill-down.
 - Updated HR Efficiency Recent Processing Details to match the application list spacing and Candidate cell style, including candidate icon, name, and email loaded from the database.
 - Reworked HR Efficiency processing time around reviewed applications. Reviewed and shortlisted rows show their Last Action Date and directional status label while leaving Processing Time blank; only successful interview/rejection emails after the current submission produce Processing Time. The table fits all columns without a horizontal scrollbar.
 - Standardized user-visible dates across job, candidate, application, notification, user management, action history, attendance, and HR Efficiency pages to `DD/MM/YYYY`, with timestamps shown as `DD/MM/YYYY, hh:mm AM/PM`.
+- Corrected HR Efficiency status handling so Recent Processing Details follows the current application status rather than inferring `Reviewed` from `reviewed_at`, and cleaned stale review timestamps/HR assignments from current `New` applications.
+- Renamed rejection actions in Candidate Screening Action History from `Rejected Candidate` to `Sent Rejected Email` for existing and future audit records.
+- Updated HR Efficiency processing charts to display average elapsed time in days instead of large hour totals, with human-readable day/hour tooltip values.

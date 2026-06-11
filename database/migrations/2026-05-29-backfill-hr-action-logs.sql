@@ -16,7 +16,7 @@ SELECT
   CASE
     WHEN a.application_status = 'shortlisted' THEN 'Shortlisted Candidate'
     WHEN a.application_status = 'interview' THEN 'Sent Interview Email'
-    WHEN a.application_status = 'rejected' THEN 'Rejected Candidate'
+    WHEN a.application_status = 'rejected' THEN 'Sent Rejected Email'
     WHEN a.application_status = 'filtered_out' THEN 'Filtered Out Candidate'
     ELSE 'Reviewed Candidate'
   END,
@@ -53,7 +53,7 @@ SELECT
   END,
   CASE
     WHEN el.email_type = 'interview' THEN 'Sent Interview Email'
-    WHEN el.email_type = 'reject' THEN 'Rejected Candidate'
+    WHEN el.email_type = 'reject' THEN 'Sent Rejected Email'
     ELSE 'Sent Email'
   END,
   CONCAT('Backfilled from email log. Subject: ', el.subject),

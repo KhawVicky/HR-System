@@ -614,7 +614,7 @@ function log_application_action(
             : "Moved the candidate into interview status.";
     } elseif ($status === "rejected") {
         $actionType = "reject_candidate";
-        $actionLabel = "Rejected Candidate";
+        $actionLabel = "Sent Rejected Email";
         $details = $emailAction ? "Rejected the candidate and sent rejection email." : "Rejected the candidate.";
     } elseif ($status === "filtered_out") {
         $actionType = "filter_out_candidate";
@@ -1679,7 +1679,7 @@ function hr_efficiency(mysqli $db): void
            ) latest ON latest.latest_email_id = el.id
          ) latest_email ON latest_email.application_id = a.id
          WHERE u.role_id IN (1, 2)
-           AND a.reviewed_at IS NOT NULL
+           AND a.application_status <> 'new'
          GROUP BY u.id
          ORDER BY totalCandidates DESC"
     );
@@ -1699,10 +1699,7 @@ function hr_efficiency(mysqli $db): void
           CASE latest_email.email_type
             WHEN 'interview' THEN 'interview_email_sent'
             WHEN 'reject' THEN 'rejection_email_sent'
-            ELSE CASE
-              WHEN a.is_shortlisted = 1 THEN 'shortlisted'
-              ELSE 'reviewed'
-            END
+            ELSE a.application_status
           END AS processingStatus,
           COALESCE(u.full_name, 'Unassigned') AS hrAssigned
          FROM applications a
@@ -1722,7 +1719,7 @@ function hr_efficiency(mysqli $db): void
              GROUP BY email_log.application_id
            ) latest ON latest.latest_email_id = el.id
          ) latest_email ON latest_email.application_id = a.id
-         WHERE a.reviewed_at IS NOT NULL
+         WHERE a.application_status <> 'new'
          ORDER BY a.submitted_at DESC"
     );
 
