@@ -13,20 +13,9 @@ import {
   Users,
   UserRound,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-} from "recharts";
 import { toast } from "sonner";
 import { apiFetch } from "../lib/api";
-import { formatDisplayDate, formatDisplayDateTime } from "../lib/date";
+import { formatDisplayDateTime } from "../lib/date";
 import { getCompactPageItems } from "../lib/pagination";
 import {
   Pagination,
@@ -38,25 +27,13 @@ import {
   PaginationPrevious,
 } from "./ui/pagination";
 import { LoadingState } from "./LoadingState";
+import {
+  HRProcessingAnalytics,
+  type ProcessingAnalyticsItem,
+  type ProcessingAnalyticsJobOption,
+} from "./HRProcessingAnalytics";
 
-type CandidateProcessing = {
-  candidateName: string;
-  candidateEmail: string;
-  jobId: number;
-  jobTitle: string;
-  applicationDate: string;
-  lastActionDate: string | null;
-  processingMinutes: number | null;
-  processingStatus:
-    | "reviewed"
-    | "shortlisted"
-    | "interview"
-    | "rejected"
-    | "filtered_out"
-    | "interview_email_sent"
-    | "rejection_email_sent";
-  hrAssigned: string;
-};
+type CandidateProcessing = ProcessingAnalyticsItem;
 
 const PROCESSING_DETAILS_PER_PAGE = 15;
 
@@ -86,14 +63,11 @@ const formatProcessingTime = (minutes: number | null) => {
   return parts.join(" ");
 };
 
-const formatChartDuration = (days: number) => {
-  return formatProcessingTime(Math.round(days * 24 * 60));
-};
-
 const processingStatusLabel = {
   reviewed: "Reviewed",
   shortlisted: "Shortlisted",
   interview: "Interview",
+  interviewed: "Interviewed",
   rejected: "Rejected",
   filtered_out: "Filtered Out",
   interview_email_sent: "Interview email sent",
@@ -104,6 +78,7 @@ const processingStatusClass = {
   reviewed: "bg-green-50 text-green-700",
   shortlisted: "bg-amber-50 text-amber-700",
   interview: "bg-blue-50 text-blue-700",
+  interviewed: "bg-sky-50 text-sky-700",
   rejected: "bg-red-50 text-red-700",
   filtered_out: "bg-slate-100 text-slate-600",
   interview_email_sent: "bg-blue-50 text-blue-700",
@@ -120,13 +95,22 @@ export function HREfficiencyDashboard({
   const [processingData, setProcessingData] = useState<
     CandidateProcessing[]
   >([]);
+  const [analyticsJobs, setAnalyticsJobs] = useState<
+    ProcessingAnalyticsJobOption[]
+  >([]);
   const [isLoadingProcessing, setIsLoadingProcessing] = useState(true);
   const [processingPage, setProcessingPage] = useState(1);
 
   useEffect(() => {
     setIsLoadingProcessing(true);
-    apiFetch<{ details: CandidateProcessing[] }>("/hr-efficiency")
-      .then((data) => setProcessingData(data.details))
+    Promise.all([
+      apiFetch<{ details: CandidateProcessing[] }>("/hr-efficiency"),
+      apiFetch<{ jobs: ProcessingAnalyticsJobOption[] }>("/jobs"),
+    ])
+      .then(([efficiencyData, jobsData]) => {
+        setProcessingData(efficiencyData.details);
+        setAnalyticsJobs(jobsData.jobs);
+      })
       .catch((error) =>
         toast.error(
           error instanceof Error
@@ -148,79 +132,6 @@ export function HREfficiencyDashboard({
           (sum, item) => sum + (item.processingMinutes ?? 0),
           0,
         ) / totalCandidates;
-
-  const hrPerformance = processedApplications.reduce(
-    (acc, item) => {
-      if (!acc[item.hrAssigned]) {
-        acc[item.hrAssigned] = {
-          name: item.hrAssigned,
-          totalCandidates: 0,
-          totalMinutes: 0,
-        };
-      }
-      acc[item.hrAssigned].totalCandidates += 1;
-      acc[item.hrAssigned].totalMinutes +=
-        item.processingMinutes ?? 0;
-      return acc;
-    },
-    {} as Record<
-      string,
-      {
-        name: string;
-        totalCandidates: number;
-        totalMinutes: number;
-      }
-    >,
-  );
-
-  const hrStats = Object.values(hrPerformance).map((hr) => ({
-    id: hr.name,
-    name: hr.name,
-    avgDays:
-      Math.round(
-        (hr.totalMinutes / hr.totalCandidates / 60 / 24) * 10,
-      ) / 10,
-    candidates: hr.totalCandidates,
-  }));
-
-  const dailyTrend = processedApplications.reduce(
-    (acc, item) => {
-      const date = item.applicationDate.slice(0, 10);
-      if (!acc[date]) {
-        acc[date] = {
-          date,
-          applications: 0,
-          avgProcessing: 0,
-          count: 0,
-        };
-      }
-      acc[date].applications += 1;
-      acc[date].avgProcessing += (item.processingMinutes ?? 0) / 60;
-      acc[date].count += 1;
-      return acc;
-    },
-    {} as Record<
-      string,
-      {
-        date: string;
-        applications: number;
-        avgProcessing: number;
-        count: number;
-      }
-    >,
-  );
-
-  const trendData = Object.values(dailyTrend)
-    .sort(
-      (a, b) =>
-        new Date(a.date).getTime() - new Date(b.date).getTime(),
-    )
-    .map((item) => ({
-      id: item.date,
-      date: formatDisplayDate(item.date),
-      avgDays:
-        Math.round((item.avgProcessing / item.count / 24) * 10) / 10,
-    }));
 
   const fastestProcessing =
     processedApplications.length > 0
@@ -307,80 +218,10 @@ export function HREfficiencyDashboard({
          
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Card className="shadow-md">
-            <CardHeader>
-              <CardTitle>Processing Time Trend</CardTitle>
-              <p className="mt-1 text-sm text-slate-500">
-                Average processing time by application date (in days)
-              </p>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={trendData}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    key="grid-line"
-                  />
-                  <XAxis dataKey="date" key="xaxis-line" />
-                  <YAxis
-                    key="yaxis-line"
-                    tickFormatter={(value) => `${value}d`}
-                  />
-                  <Tooltip
-                    key="tooltip-line"
-                    formatter={(value) => [
-                      formatChartDuration(Number(value)),
-                      "Average processing time",
-                    ]}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="avgDays"
-                    stroke="#003B7A"
-                    strokeWidth={2}
-                    key="line-avgDays"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-          <Card className="shadow-md">
-            <CardHeader>
-              <CardTitle>HR Performance Comparison</CardTitle>
-              <p className="mt-1 text-sm text-slate-500">
-                Average processing time by HR staff (in days)
-              </p>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={hrStats}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    key="grid-bar"
-                  />
-                  <XAxis dataKey="name" key="xaxis-bar" />
-                  <YAxis
-                    key="yaxis-bar"
-                    tickFormatter={(value) => `${value}d`}
-                  />
-                  <Tooltip
-                    key="tooltip-bar"
-                    formatter={(value) => [
-                      formatChartDuration(Number(value)),
-                      "Average processing time",
-                    ]}
-                  />
-                  <Bar
-                    dataKey="avgDays"
-                    fill="#003B7A"
-                    key="bar-avgDays"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
+        <HRProcessingAnalytics
+          items={processingData}
+          jobs={analyticsJobs}
+        />
 
         <Card className="shadow-md">
           <CardHeader>

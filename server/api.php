@@ -434,13 +434,13 @@ function job_candidates(mysqli $db, int $jobId): void
                      SELECT COUNT(*) + 1
                      FROM applications ranked
                      WHERE ranked.job_id = a.job_id
-                       AND ranked.application_status IN ('new', 'reviewed', 'shortlisted', 'interview')
+                       AND ranked.application_status IN ('new', 'reviewed', 'shortlisted', 'interview', 'interviewed')
                        AND COALESCE(ranked.total_score, 0) > COALESCE(a.total_score, 0)
                    )
                  )
                END AS rank,
                CASE
-                 WHEN a.is_shortlisted = 1 AND a.application_status <> 'interview' THEN 'shortlisted'
+                 WHEN a.is_shortlisted = 1 AND a.application_status NOT IN ('interview', 'interviewed') THEN 'shortlisted'
                  ELSE a.application_status
              END AS status
              FROM applications a
@@ -529,7 +529,7 @@ function update_application(mysqli $db, int $applicationId): void
     $actionUserId = (int) ($data["actionUserId"] ?? 0);
     $interviewDateTime = trim((string) ($data["interviewDateTime"] ?? ""));
     $emailAction = filter_var($data["emailAction"] ?? false, FILTER_VALIDATE_BOOLEAN);
-    $allowed = ["new", "reviewed", "shortlisted", "interview", "rejected", "filtered_out"];
+    $allowed = ["new", "reviewed", "shortlisted", "interview", "interviewed", "rejected", "filtered_out"];
 
     if (!in_array($status, $allowed, true)) {
         respond(["error" => "Invalid application status"], 422);
@@ -543,14 +543,16 @@ function update_application(mysqli $db, int $applicationId): void
     );
 
     if ($status === "shortlisted") {
-        exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), is_shortlisted = 1, application_status = IF(application_status = 'interview', application_status, 'shortlisted'), reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
+        exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), is_shortlisted = 1, application_status = IF(application_status IN ('interview', 'interviewed'), application_status, 'shortlisted'), reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
     } elseif ($status === "reviewed") {
-        exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), is_shortlisted = 0, application_status = IF(application_status = 'interview', application_status, 'reviewed'), reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
+        exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), is_shortlisted = 0, application_status = IF(application_status IN ('interview', 'interviewed'), application_status, 'reviewed'), reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
     } elseif ($status === "interview") {
         if ($emailAction) {
             create_email_sent_notification($db, $applicationId, $actionUserId, "interview", $interviewDateTime);
         }
         exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), is_shortlisted = 1, interview_sent_at = COALESCE(interview_sent_at, NOW()), application_status = 'interview', reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
+    } elseif ($status === "interviewed") {
+        exec_stmt($db, "UPDATE applications SET assigned_hr_user_id = COALESCE(assigned_hr_user_id, (SELECT id FROM users WHERE id = NULLIF(?, 0) LIMIT 1)), application_status = 'interviewed', reviewed_at = NOW() WHERE id = ?", "ii", [$actionUserId, $applicationId]);
     } elseif ($status === "rejected") {
         if ($emailAction) {
             create_email_sent_notification($db, $applicationId, $actionUserId, "reject", "");
@@ -612,6 +614,10 @@ function log_application_action(
         $details = $emailAction
             ? "Sent interview email" . ($interviewDateTime !== "" ? " with interview date/time: {$interviewDateTime}." : ".")
             : "Moved the candidate into interview status.";
+    } elseif ($status === "interviewed") {
+        $actionType = "mark_interviewed";
+        $actionLabel = "Marked Interview Completed";
+        $details = "Marked the candidate interview as completed.";
     } elseif ($status === "rejected") {
         $actionType = "reject_candidate";
         $actionLabel = "Sent Rejected Email";
@@ -1661,7 +1667,7 @@ function hr_efficiency(mysqli $db): void
           u.full_name AS hrName,
           COUNT(latest_email.application_id) AS totalCandidates,
           ROUND(AVG(GREATEST(0, TIMESTAMPDIFF(MINUTE, a.submitted_at, latest_email.sent_at))) / 60, 1) AS avgProcessingHours,
-          SUM(CASE WHEN a.application_status IN ('shortlisted', 'interview') THEN 1 ELSE 0 END) AS shortlisted,
+          SUM(CASE WHEN a.application_status IN ('shortlisted', 'interview', 'interviewed') THEN 1 ELSE 0 END) AS shortlisted,
           SUM(CASE WHEN a.application_status = 'rejected' THEN 1 ELSE 0 END) AS rejected
          FROM users u
          LEFT JOIN applications a ON a.assigned_hr_user_id = u.id
@@ -1690,6 +1696,7 @@ function hr_efficiency(mysqli $db): void
           c.email AS candidateEmail,
           j.id AS jobId,
           j.title AS jobTitle,
+          j.department AS jobDepartment,
           a.submitted_at AS applicationDate,
           COALESCE(latest_email.sent_at, a.reviewed_at) AS lastActionDate,
           CASE
@@ -1701,6 +1708,7 @@ function hr_efficiency(mysqli $db): void
             WHEN 'reject' THEN 'rejection_email_sent'
             ELSE a.application_status
           END AS processingStatus,
+          latest_email.email_type AS emailOutcome,
           COALESCE(u.full_name, 'Unassigned') AS hrAssigned
          FROM applications a
          JOIN candidates c ON c.id = a.candidate_id
@@ -1720,7 +1728,7 @@ function hr_efficiency(mysqli $db): void
            ) latest ON latest.latest_email_id = el.id
          ) latest_email ON latest_email.application_id = a.id
          WHERE a.application_status <> 'new'
-         ORDER BY a.submitted_at DESC"
+         ORDER BY COALESCE(latest_email.sent_at, a.reviewed_at) DESC, a.id DESC"
     );
 
     respond(["data" => $summary, "details" => $details]);
@@ -1736,16 +1744,16 @@ function attendance_analytics(mysqli $db): void
           j.title AS jobTitle,
           DATE(COALESCE(a.reviewed_at, a.submitted_at)) AS scheduledDate,
           CASE
-            WHEN a.application_status = 'interview' THEN 'attended'
+            WHEN a.application_status IN ('interview', 'interviewed') THEN 'attended'
             WHEN a.application_status = 'rejected' THEN 'no-show'
             ELSE 'rescheduled'
           END AS status,
-          CASE WHEN a.application_status = 'interview' THEN 1 ELSE 0 END AS onTime,
+          CASE WHEN a.application_status IN ('interview', 'interviewed') THEN 1 ELSE 0 END AS onTime,
           'Recorded from recruitment workflow database.' AS notes
          FROM applications a
          JOIN candidates c ON c.id = a.candidate_id
          JOIN jobs j ON j.id = a.job_id
-         WHERE a.application_status IN ('interview', 'rejected', 'shortlisted')
+         WHERE a.application_status IN ('interview', 'interviewed', 'rejected', 'shortlisted')
          ORDER BY COALESCE(a.reviewed_at, a.submitted_at) DESC"
     );
 

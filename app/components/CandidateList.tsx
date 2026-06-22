@@ -67,6 +67,7 @@ type CandidateStatus =
   | "reviewed"
   | "shortlisted"
   | "interview"
+  | "interviewed"
   | "filtered_out"
   | "rejected";
 
@@ -261,6 +262,12 @@ type ApiCandidate = {
   }[];
 };
 
+type EmailTemplate = {
+  subject: string;
+  body: string;
+  isActive?: boolean;
+};
+
 const scoreColors = [
   { color: "bg-violet-500", badgeColor: "text-violet-700 bg-violet-100" },
   { color: "bg-sky-500", badgeColor: "text-sky-700 bg-sky-100" },
@@ -277,6 +284,15 @@ const getEmailTypeLabel = (type?: string | null) => {
   if (type === "interview") return "Interview";
   if (type === "reject") return "Reject";
   return "Email";
+};
+
+const defaultRejectTemplate: EmailTemplate = {
+  subject: "Update on your job application",
+  body:
+    "Dear {candidateName},\n\n" +
+    "Thank you for your interest in {jobTitle}. After careful review, we regret to inform you that you have not been selected for this role.\n\n" +
+    "We appreciate your time and interest in {companyName}.\n\n" +
+    "Regards,\n{companyName}",
 };
 
 const formatExperience = (value: string | number | null) => {
@@ -437,9 +453,14 @@ export function CandidateList() {
 
   const [interviewPopupCandidate, setInterviewPopupCandidate] =
     useState<Candidate | null>(null);
+  const [rejectPopupCandidate, setRejectPopupCandidate] =
+    useState<Candidate | null>(null);
 
   const [interviewDateTime, setInterviewDateTime] =
     useState("");
+  const [sendRejectEmail, setSendRejectEmail] = useState(true);
+  const [rejectTemplate, setRejectTemplate] =
+    useState<EmailTemplate>(defaultRejectTemplate);
 
   useEffect(() => {
     if (!jobId) return;
@@ -490,6 +511,27 @@ export function CandidateList() {
       .finally(() => setIsLoadingCandidates(false));
   }, [jobId, searchParams]);
 
+  useEffect(() => {
+    apiFetch<{
+      templates?: {
+        reject_application?: EmailTemplate;
+      };
+    }>("/email-templates")
+      .then((data) => {
+        const template = data.templates?.reject_application;
+        if (!template) return;
+
+        setRejectTemplate({
+          subject: template.subject || defaultRejectTemplate.subject,
+          body: template.body || defaultRejectTemplate.body,
+          isActive: template.isActive,
+        });
+      })
+      .catch(() => {
+        setRejectTemplate(defaultRejectTemplate);
+      });
+  }, []);
+
   const getTotalWeightedScore = (
     scoreBreakdown: ScoreBreakdownItem[],
   ) => calculateTotalScore(scoreBreakdown);
@@ -504,6 +546,28 @@ export function CandidateList() {
 
   const getCandidateScorePercentage = (candidate: Candidate) =>
     Math.round(getCandidateDisplayScore(candidate));
+
+  const buildRejectEmailPreview = (candidate: Candidate) => {
+    const replacements: Record<string, string> = {
+      "{candidateName}": candidate.name,
+      "{jobTitle}": jobTitle,
+      "{companyName}": "UWC Berhad",
+      "{{candidate_name}}": candidate.name,
+      "{{job_title}}": jobTitle,
+    };
+
+    const replacePlaceholders = (value: string) =>
+      Object.entries(replacements).reduce(
+        (text, [placeholder, replacement]) =>
+          text.split(placeholder).join(replacement),
+        value,
+      );
+
+    return {
+      subject: replacePlaceholders(rejectTemplate.subject),
+      body: replacePlaceholders(rejectTemplate.body).replace(/\\n/g, "\n"),
+    };
+  };
 
   const handleInternalResumeUpload = (
     event: ChangeEvent<HTMLInputElement>,
@@ -675,6 +739,8 @@ export function CandidateList() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case "interviewed":
+        return "bg-sky-700";
       case "interview":
         return "bg-blue-600";
       case "reviewed":
@@ -696,6 +762,8 @@ export function CandidateList() {
     switch (status) {
       case "filtered_out":
         return "FILTERED OUT";
+      case "interviewed":
+        return "INTERVIEWED";
       default:
         return status.replace(/_/g, " ").toUpperCase();
     }
@@ -740,8 +808,9 @@ export function CandidateList() {
               status:
                 newStatus === "shortlisted" ||
                 newStatus === "reviewed"
-                  ? candidate.status === "interview"
-                    ? "interview"
+                  ? candidate.status === "interview" ||
+                    candidate.status === "interviewed"
+                    ? candidate.status
                     : newStatus
                   : newStatus,
               isShortlisted:
@@ -752,6 +821,8 @@ export function CandidateList() {
                     ? false
                     : newStatus === "interview"
                       ? true
+                      : newStatus === "interviewed"
+                        ? candidate.isShortlisted
                       : candidate.isShortlisted,
               interviewSentAt:
                 newStatus === "interview"
@@ -904,7 +975,29 @@ export function CandidateList() {
     }
   };
 
-  const handleRejectCandidate = async (candidate: Candidate) => {
+  const handleMarkInterviewed = async (candidate: Candidate) => {
+    if (candidate.status === "interviewed" || !candidate.interviewSentAt) {
+      return;
+    }
+
+    const isUpdated = await updateCandidateStatus(candidate.id, "interviewed", {
+      keepVisibleUntilRefresh: true,
+    });
+
+    if (isUpdated) {
+      toast.success(`${candidate.name} marked as interviewed`);
+    }
+  };
+
+  const handleRejectCandidate = (candidate: Candidate) => {
+    setRejectPopupCandidate(candidate);
+    setSendRejectEmail(true);
+  };
+
+  const handleConfirmRejectCandidate = async () => {
+    if (!rejectPopupCandidate) return;
+
+    const candidate = rejectPopupCandidate;
     setSendingEmailCandidateIds((prev) => {
       const next = new Set(prev);
       next.add(candidate.id);
@@ -912,7 +1005,7 @@ export function CandidateList() {
     });
 
     const isSent = await updateCandidateStatus(candidate.id, "rejected", {
-      emailAction: true,
+      emailAction: sendRejectEmail,
     });
 
     setSendingEmailCandidateIds((prev) => {
@@ -922,7 +1015,12 @@ export function CandidateList() {
     });
 
     if (isSent) {
-      toast.success(`Rejection email sent to ${candidate.name}`);
+      toast.success(
+        sendRejectEmail
+          ? `Rejection email sent to ${candidate.name}`
+          : `${candidate.name} rejected`,
+      );
+      setRejectPopupCandidate(null);
     }
   };
 
@@ -1087,6 +1185,9 @@ export function CandidateList() {
                   <SelectItem value="interview">
                     Interview
                   </SelectItem>
+                  <SelectItem value="interviewed">
+                    Interviewed
+                  </SelectItem>
                   <SelectItem value="filtered_out">
                     Filtered Out
                   </SelectItem>
@@ -1200,6 +1301,8 @@ export function CandidateList() {
           const hasInterviewSent = Boolean(
             candidate.interviewSentAt,
           );
+          const isInterviewCompleted =
+            candidate.status === "interviewed";
           const isEmailSending = sendingEmailCandidateIds.has(
             candidate.id,
           );
@@ -1290,7 +1393,8 @@ export function CandidateList() {
                               </Badge>
                             )}
                           {hasInterviewSent &&
-                            candidate.status !== "interview" && (
+                            candidate.status !== "interview" &&
+                            candidate.status !== "interviewed" && (
                               <Badge className="bg-blue-600">
                                 INTERVIEW
                               </Badge>
@@ -1692,22 +1796,34 @@ export function CandidateList() {
 
                     <div className="flex gap-2">
                       <Button
-                        className="bg-[#003B7A] hover:bg-[#002f63] text-white shadow-sm px-5"
-                        onClick={() =>
-                          handleSendInterviewEmail(candidate)
-                        }
+                        className={`text-white shadow-sm px-5 ${
+                          hasInterviewSent || isInterviewCompleted
+                            ? "bg-sky-700 hover:bg-sky-800 disabled:bg-sky-700 disabled:opacity-60"
+                            : "bg-[#003B7A] hover:bg-[#002f63]"
+                        }`}
+                        onClick={() => {
+                          if (!hasInterviewSent) {
+                            handleSendInterviewEmail(candidate);
+                            return;
+                          }
+
+                          handleMarkInterviewed(candidate);
+                        }}
                         disabled={
                           isEmailSending ||
                           candidate.status === "rejected" ||
-                          hasInterviewSent
+                          candidate.status === "filtered_out" ||
+                          isInterviewCompleted
                         }
                       >
                         <Mail className="w-4 h-4 mr-2" />
                         {isEmailSending
                           ? "Sending..."
-                          : hasInterviewSent
-                          ? "Interview Email Sent"
-                          : "Send Interview Email"}
+                          : isInterviewCompleted
+                            ? "Interview Completed"
+                            : hasInterviewSent
+                              ? "Mark as Interviewed"
+                              : "Send Interview Email"}
                       </Button>
 
                       <Button
@@ -1718,7 +1834,6 @@ export function CandidateList() {
                         }
                         disabled={
                           isEmailSending ||
-                          candidate.status === "filtered_out" ||
                           candidate.status === "rejected"
                         }
                       >
@@ -1854,8 +1969,17 @@ export function CandidateList() {
       </Dialog>
 
       {interviewPopupCandidate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => {
+            setInterviewPopupCandidate(null);
+            setInterviewDateTime("");
+          }}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="border-b border-slate-200 px-6 py-4">
               <h2 className="text-xl font-semibold text-slate-900">
                 Interview Email Preview
@@ -1940,6 +2064,91 @@ UWC Berhad`}
                 )
                   ? "Sending..."
                   : "Send Email"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rejectPopupCandidate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setRejectPopupCandidate(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-slate-200 px-6 py-4">
+              <h2 className="text-xl font-semibold text-slate-900">
+                Rejection Email Preview
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Review the rejection action before confirming.
+              </p>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+              <div className="flex items-center gap-2">
+                <input
+                  id="sendRejectEmail"
+                  type="checkbox"
+                  checked={sendRejectEmail}
+                  onChange={(event) =>
+                    setSendRejectEmail(event.target.checked)
+                  }
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                <label
+                  htmlFor="sendRejectEmail"
+                  className="text-sm font-medium text-slate-700"
+                >
+                  Send rejection email to candidate
+                </label>
+              </div>
+
+              {sendRejectEmail && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Message
+                  </label>
+                  <textarea
+                    readOnly
+                    rows={11}
+                    className="w-full rounded-md border border-input bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                    value={`Subject: ${
+                      buildRejectEmailPreview(rejectPopupCandidate).subject
+                    }\n\n${buildRejectEmailPreview(rejectPopupCandidate).body}`}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={sendingEmailCandidateIds.has(
+                  rejectPopupCandidate.id,
+                )}
+                onClick={() => setRejectPopupCandidate(null)}
+              >
+                Cancel
+              </Button>
+
+              <Button
+                type="button"
+                className="bg-red-600 text-white hover:bg-red-700"
+                disabled={sendingEmailCandidateIds.has(
+                  rejectPopupCandidate.id,
+                )}
+                onClick={handleConfirmRejectCandidate}
+              >
+                {sendingEmailCandidateIds.has(rejectPopupCandidate.id)
+                  ? "Sending..."
+                  : sendRejectEmail
+                    ? "Send Email"
+                    : "Confirm Reject"}
               </Button>
             </div>
           </div>

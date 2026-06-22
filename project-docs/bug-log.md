@@ -33,6 +33,13 @@
 - Cause: The latest-email subqueries joined `email_logs` and `applications` but selected unqualified `application_id` and `id` columns, causing MariaDB to report an ambiguous column error.
 - Fix: Qualified the grouped fields as `email_log.application_id` and `MAX(email_log.id)` in both HR Efficiency queries.
 
+## 2026-06-17 - Recent Processing Details Sorted by Application Date
+
+- Symptom: Recent Processing Details did not follow the visible Last Action Date order.
+- Cause: The HR Efficiency details query calculated `lastActionDate` but still ordered rows by `applications.submitted_at`.
+- Fix: Sorted the query by `COALESCE(latest_email.sent_at, applications.reviewed_at)` so the table follows Last Action Date.
+- Verification: PHP syntax check passed for `server/api.php`.
+
 ## 2026-06-10 - XAMPP MySQL Stopped Unexpectedly
 
 - Symptom: XAMPP MySQL started briefly and then stopped unexpectedly.
@@ -65,3 +72,20 @@
 - Fix: Exported a full project recovery backup and a separate readable `job_criteria` dump, rebuilt `job_criteria`, repaired all MariaDB system tables, and restored local-only XAMPP root accounts for `localhost`, `127.0.0.1`, and `::1`.
 - Backup: `C:\xampp\mysql\recovery_backup_20260611_2120`.
 - Verification: MariaDB runs normally without recovery flags, delayed `mysqladmin ping` returned alive, all project and MariaDB system tables passed `mysqlcheck`, and the project database returned 449 applications and 168 job criteria.
+# Expanded HR processing chart was clipped
+
+- Cause: Expanded charts used a fixed `520px` height inside a modal limited to `92vh`. Browser zoom and taller filter layouts could make the chart exceed the modal's available content area, clipping its lower axis and labels.
+- Fix: Changed the modal to explicit header/filter/chart grid rows and made the expanded chart fill only the remaining row height.
+- Verification: Playwright confirmed Trend, HR, and Custom Range expanded views fit completely inside the modal at a zoom-equivalent `1600x777` viewport.
+
+# Expanded analytics required vertical scrolling
+
+- Cause: The detailed expanded analytics layout used large fixed chart heights, generous section gaps, and spacious table rows, making the summary and breakdown sections fall below the viewport.
+- Fix: Increased modal viewport usage and introduced a compact single-screen layout for standard filters while preserving scroll support for Custom Range.
+- Verification: Playwright confirmed both Trend and HR expanded views render their charts, summary cards, and breakdown tables without vertical overflow at `1740x815`.
+
+# Expanded analytics modal felt oversized and left unused space
+
+- Cause: A fixed near-full-screen modal height made the frame cover most of the page even when its compact content did not need the space.
+- Fix: Changed the expanded modal to a true 80% viewport width with content-driven height and an 88% viewport height cap.
+- Verification: Playwright confirmed both expanded views render at approximately 80% width, keep their charts visible, and remain below the configured height cap at `1920x900`.
