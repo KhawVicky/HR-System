@@ -211,6 +211,7 @@ stateDiagram-v2
     New --> Reviewed
     Reviewed --> Shortlisted
     Shortlisted --> Interview
+    Interview --> Interviewed
     New --> Rejected
     Reviewed --> Rejected
     Shortlisted --> Rejected
