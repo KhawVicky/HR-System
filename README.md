@@ -1,6 +1,6 @@
 # AI-Based Human Resource Decision Support System
 
-A web-based recruitment decision support system developed for UWC Berhad. The system centralizes job creation, candidate applications, resume evaluation, candidate ranking, and recruitment communication in one platform.
+A web-based recruitment decision support system developed for UWC Berhad. The system centralizes job creation, candidate applications, resume evaluation, candidate rankin and recruitment communication in one platform.
 
 It is designed to reduce repetitive screening work while keeping the recruitment process transparent. The system supports HR decisions but does not make the final hiring decision automatically.
 
@@ -11,11 +11,9 @@ It is designed to reduce repetitive screening work while keeping the recruitment
 * Uses 2 parsing approaches: rule-based parsing and model-based parsing
 * Applies 3 extraction techniques: Regex, taxonomy matching, and local NLP extraction
 * Uses 1 unique application link for each published job
-* Supports 6 candidate statuses: New, Reviewed, Shortlisted, Interview, Rejected, and Filtered Out
+* Supports 7 candidate statuses: New, Reviewed, Shortlisted, Interview, Interviewed, Rejected and Filtered Out
 * Produces a weighted score breakdown for every evaluated candidate
 * Keeps the final hiring decision under human control
-
-No model accuracy figures are reported at the current development stage. Formal evaluation metrics will be added after the parsing pipeline and test dataset are finalized.
 
 ## Problem
 
@@ -66,18 +64,24 @@ HR staff can:
 * Publish or close job posts
 * Generate an application link for each job
 
-### 2. Candidate application portal
+### 2. Candidate career portal
+
+The system provides a complete career portal for UWC candidates instead of a single resume submission page.
 
 Candidates can:
 
-* Open a job-specific application link
-* Enter personal and contact information
-* Upload PDF resumes and supporting files
-* Submit more than one application
-* Receive submission confirmation
-* View clear validation and error messages
+* Browse available job openings
+* Open detailed job information
+* Register and log in to a candidate account
+* Apply for different job positions
+* Upload a PDF resume and supporting documents
+* View all submitted applications in one account
+* Check the current status of each application
+* Review previous application records and submission dates
+* Receive clear submission confirmation, validation and error messages
 
-Each application is connected to the correct job post through its unique link.
+Each application is stored as a separate record and linked to the correct job post. The candidate dashboard allows users to track their application history and view status updates such as New, Reviewed, Shortlisted, Interview, Rejected or Filtered Out.
+
 
 ### 3. Resume and JD parsing
 
@@ -221,6 +225,7 @@ Supported statuses:
 | Reviewed     | HR has opened and reviewed the candidate details      |
 | Shortlisted  | The candidate has been selected for further review    |
 | Interview    | An interview invitation has been sent                 |
+| Interviewed  | After interview complete                              |
 | Rejected     | The candidate has been rejected                       |
 | Filtered Out | The candidate did not meet an eligibility requirement |
 
@@ -349,120 +354,36 @@ The architecture separates the system into 4 main technical areas:
 
 * Visual Studio Code
 * XAMPP
-* Git
 * GitHub
 * Figma
 
-## Local development setup
-
-### Prerequisites
-
-Install the following tools:
-
-* Node.js 20 or later
-* npm 10 or later
-* XAMPP with Apache, PHP and MariaDB
-* Git
-* Python 3.10 or later for the parsing service
-* Tesseract OCR for scanned PDF support
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/KhawVicky/HR-System.git
-cd HR-System
-```
-
-### 2. Install frontend dependencies
-
-```bash
-npm install
-```
-
-### 3. Copy the PHP API to XAMPP
-
-Create this directory:
-
-```text
-C:\xampp\htdocs\uwc-hr-api
-```
-
-Then run:
-
-```bash
-npm run dev:api
-```
-
-This copies:
-
-```text
-server/api.php
-```
-
-to:
-
-```text
-C:\xampp\htdocs\uwc-hr-api\api.php
-```
-
-### 4. Start XAMPP
-
-Start:
-
-* Apache
-* MySQL
-
-The PHP API will be available at:
-
-```text
-http://localhost/uwc-hr-api/api.php
-```
-
-### 5. Start the frontend
-
-```bash
-npm run dev
-```
-
-The frontend will run on a local Vite development address such as:
-
-```text
-http://localhost:5174
-```
-
-### 6. Build for production
-
-```bash
-npm run build
-```
-
-### 7. Preview the production build
-
-```bash
-npm run preview
-```
-
 ## Project status
 
-| Area                                   | Status                          |
-| -------------------------------------- | ------------------------------- |
-| React and TypeScript interface         | Implemented                     |
-| PHP REST API integration               | Implemented                     |
-| MariaDB database integration           | Implemented                     |
-| Job and candidate pages                | Implemented                     |
-| Candidate application workflow         | Implemented                     |
-| Candidate status actions               | Implemented                     |
-| Interview and rejection email workflow | Implemented                     |
-| Notifications and email logs           | Implemented                     |
-| HR activity and efficiency analytics   | Implemented                     |
-| Real JD information extraction         | In development                  |
-| Real resume field extraction           | In development                  |
-| FastAPI parsing service                | In development                  |
-| OCR fallback pipeline                  | Planned for parsing integration |
-| Local NLP extraction                   | Planned for parsing integration |
-| Production-ready authentication        | In development                  |
-| Formal parsing accuracy evaluation     | Not started                     |
-| Report export                          | Planned                         |
+| Area                                              | Status                          |
+| ------------------------------------------------- | ------------------------------- |
+| React and TypeScript interface                    | Implemented                     |
+| PHP REST API integration                          | Implemented                     |
+| MariaDB database integration                      | Implemented                     |
+| Job and candidate management pages                | Implemented                     |
+| Candidate application submission workflow         | Implemented                     |
+| Candidate career website                          | In development                  |
+| Candidate registration and login                  | In development                  |
+| Candidate job browsing and job details            | In development                  |
+| Candidate application history                     | In development                  |
+| Candidate application status tracking             | In development                  |
+| Candidate status actions for HR                   | Implemented                     |
+| Interview and rejection email workflow            | Implemented                     |
+| Notifications and email logs                      | Implemented                     |
+| HR activity and efficiency analytics              | Implemented                     |
+| Real JD information extraction                    | In development                  |
+| Real resume field extraction                      | In development                  |
+| FastAPI parsing service                           | In development                  |
+| OCR fallback pipeline                             | Planned for parsing integration |
+| Local NLP extraction                              | Planned for parsing integration |
+| Production-ready authentication and authorization | In development                  |
+| Formal parsing accuracy evaluation                | Not started                     |
+| Report export                                     | Planned                         |
+
 
 ## Current scope
 
