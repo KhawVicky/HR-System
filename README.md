@@ -214,6 +214,8 @@ stateDiagram-v2
     Interview --> Interviewed
     New --> Rejected
     Reviewed --> Rejected
+    Interview --> Rejected
+    Interviewed --> Rejected
     Shortlisted --> Rejected
     New --> FilteredOut
 ```
