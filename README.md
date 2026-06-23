@@ -267,34 +267,42 @@ Attendance analytics is treated as an optional feature and is not part of the co
 
 HR Staff can:
 
-* Create and manage jobs
-* Upload job descriptions
-* Configure criteria and weights
-* Generate application links
-* Review candidates
-* View score breakdowns
+* Create, edit and manage job posts
+* Configure eligibility filters, screening criteria and weights
+* Generate and manage job application links
+* Review candidate applications, rankings and score breakdowns
 * Shortlist candidates
+* Schedule interviews
 * Send interview and rejection emails
+* Update candidate application statuses
+* Review recruitment notifications and communication logs
 
 ### Hiring Manager
 
 Hiring Managers can:
 
-* Review ranked candidates
-* View shortlisted candidates
-* Inspect candidate evidence
-* Review score breakdowns
-* Support the final hiring decision
+* Review HR processing information
+* Monitor recruitment activity and efficiency
+* View HR performance and processing-time analytics
+* Review recruitment workflow records
+* Create and manage internal HR user accounts
+* Assign internal user roles
+* Activate or deactivate internal accounts
 
 ### Candidate
 
 Candidates can:
 
-* Open a shared application link
-* Submit personal information
-* Upload a PDF resume
-* Upload supporting documents
-* Receive application confirmation
+* Register and log in to the UWC career portal
+* Browse available job openings
+* View job descriptions and requirements
+* Apply for different job positions
+* Enter personal and contact information
+* Upload PDF resumes and supporting documents
+* View submitted applications
+* Track the current status of each application
+* Review previous application records and submission dates
+
 
 ## System architecture
 
@@ -456,10 +464,8 @@ The final recruitment decision remains with authorized HR staff and hiring manag
 | Project          | AI-Based Human Resource Decision Support System |
 | Type             | Final Year Project                              |
 | Industry partner | UWC Berhad                                      |
-| Developer        | Vicky Khaw Wei Kee                              |
-| Student ID       | 0209031                                         |
 | Programme        | Bachelor of Computer Science                    |
-| Institution      | University of Wollongong Malaysia               |
+| Institution      | University of Wollongong Malaysia Penang        |
 | Supervisor       | Dr. Wong Khang Siang                            |
 
 ## License
