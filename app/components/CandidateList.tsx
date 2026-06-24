@@ -50,6 +50,7 @@ import {
   Info,
   Upload,
   Users,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch, getStoredUser } from "../lib/api";
@@ -108,6 +109,11 @@ interface Candidate {
   lastEmailType?: string | null;
   lastEmailSentAt?: string | null;
   lastEmailSentBy?: string | null;
+  latestRejectActionType?: string | null;
+  latestRejectActionBy?: string | null;
+  latestEmailActionLogId?: number | null;
+  latestEmailReasonType?: string | null;
+  latestEmailReasonDetails?: string | null;
   currentSubmissionNo: number;
   currentSubmissionLabel: string;
   experience: string;
@@ -227,6 +233,11 @@ type ApiCandidate = {
   lastEmailType: string | null;
   lastEmailSentAt: string | null;
   lastEmailSentBy: string | null;
+  latestRejectActionType: string | null;
+  latestRejectActionBy: string | null;
+  latestEmailActionLogId: string | number | null;
+  latestEmailReasonType: string | null;
+  latestEmailReasonDetails: string | null;
   currentSubmissionNo: string | number;
   currentSubmissionLabel: string;
   eligibilityStatus: string;
@@ -295,6 +306,14 @@ const defaultRejectTemplate: EmailTemplate = {
     "Regards,\n{companyName}",
 };
 
+const rejectionReasonTypes = [
+  "Not a Good Fit",
+  "Insufficient Skills",
+  "Lack of Experience",
+  "Overqualified",
+  "Other",
+];
+
 const formatExperience = (value: string | number | null) => {
   if (value === null || value === "") return "";
 
@@ -303,6 +322,11 @@ const formatExperience = (value: string | number | null) => {
 
   const label = years === 1 ? "year" : "years";
   return `${Number.isInteger(years) ? years : years.toFixed(1)} ${label}`;
+};
+
+const parseCandidateCgpa = (candidate: Candidate) => {
+  const cgpa = Number(candidate.cgpa);
+  return Number.isFinite(cgpa) ? cgpa : -1;
 };
 
 const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
@@ -348,6 +372,14 @@ const mapApiCandidate = (candidate: ApiCandidate): Candidate => {
     lastEmailType: candidate.lastEmailType,
     lastEmailSentAt: candidate.lastEmailSentAt,
     lastEmailSentBy: candidate.lastEmailSentBy,
+    latestRejectActionType: candidate.latestRejectActionType,
+    latestRejectActionBy: candidate.latestRejectActionBy,
+    latestEmailActionLogId:
+      candidate.latestEmailActionLogId === null
+        ? null
+        : Number(candidate.latestEmailActionLogId),
+    latestEmailReasonType: candidate.latestEmailReasonType,
+    latestEmailReasonDetails: candidate.latestEmailReasonDetails,
     currentSubmissionNo: Number(candidate.currentSubmissionNo ?? 1),
     currentSubmissionLabel:
       candidate.currentSubmissionLabel || "1st Submission",
@@ -455,10 +487,15 @@ export function CandidateList() {
     useState<Candidate | null>(null);
   const [rejectPopupCandidate, setRejectPopupCandidate] =
     useState<Candidate | null>(null);
+  const [reasonPopupCandidate, setReasonPopupCandidate] =
+    useState<Candidate | null>(null);
 
   const [interviewDateTime, setInterviewDateTime] =
     useState("");
   const [sendRejectEmail, setSendRejectEmail] = useState(true);
+  const [rejectEmailStep, setRejectEmailStep] = useState<1 | 2>(1);
+  const [rejectReasonType, setRejectReasonType] = useState("");
+  const [rejectReasonDetails, setRejectReasonDetails] = useState("");
   const [rejectTemplate, setRejectTemplate] =
     useState<EmailTemplate>(defaultRejectTemplate);
 
@@ -644,6 +681,11 @@ export function CandidateList() {
       lastEmailType: null,
       lastEmailSentAt: null,
       lastEmailSentBy: null,
+      latestRejectActionType: null,
+      latestRejectActionBy: null,
+      latestEmailActionLogId: null,
+      latestEmailReasonType: null,
+      latestEmailReasonDetails: null,
       currentSubmissionNo: 1,
       currentSubmissionLabel: "1st Submission",
       experience: "Pending analysis",
@@ -705,6 +747,10 @@ export function CandidateList() {
           new Date(b.appliedDate).getTime() -
           new Date(a.appliedDate).getTime()
         );
+      }
+
+      if (sortBy === "cgpa") {
+        return parseCandidateCgpa(b) - parseCandidateCgpa(a);
       }
 
       const rankA =
@@ -784,6 +830,8 @@ export function CandidateList() {
       interviewDateTime?: string;
       emailAction?: boolean;
       keepVisibleUntilRefresh?: boolean;
+      reasonType?: string;
+      reasonDetails?: string;
     } = {},
   ): Promise<boolean> => {
     const currentUser = getStoredUser();
@@ -849,6 +897,25 @@ export function CandidateList() {
                 options.emailAction
                   ? currentUser?.name ?? candidate.lastEmailSentBy
                   : candidate.lastEmailSentBy,
+              latestRejectActionType:
+                newStatus === "rejected"
+                  ? options.emailAction
+                    ? "send_rejection_email"
+                    : "reject_candidate"
+                  : candidate.latestRejectActionType,
+              latestRejectActionBy:
+                newStatus === "rejected"
+                  ? currentUser?.name ?? candidate.latestRejectActionBy
+                  : candidate.latestRejectActionBy,
+              latestEmailReasonType:
+                options.emailAction && options.reasonType !== undefined
+                  ? options.reasonType || null
+                  : candidate.latestEmailReasonType,
+              latestEmailReasonDetails:
+                options.emailAction &&
+                options.reasonDetails !== undefined
+                  ? options.reasonDetails || null
+                  : candidate.latestEmailReasonDetails,
             }
           : candidate,
       );
@@ -869,6 +936,8 @@ export function CandidateList() {
           actionUserId: currentUser?.id,
           interviewDateTime: options.interviewDateTime,
           emailAction: options.emailAction,
+          reasonType: options.reasonType,
+          reasonDetails: options.reasonDetails,
         }),
       });
       return true;
@@ -939,6 +1008,24 @@ export function CandidateList() {
     setInterviewDateTime("");
   };
 
+  const closeInterviewEmailModal = () => {
+    setInterviewPopupCandidate(null);
+    setInterviewDateTime("");
+  };
+
+  const closeRejectEmailModal = () => {
+    setRejectPopupCandidate(null);
+    setRejectEmailStep(1);
+    setRejectReasonType("");
+    setRejectReasonDetails("");
+  };
+
+  const closeReasonModal = () => {
+    setReasonPopupCandidate(null);
+    setRejectReasonType("");
+    setRejectReasonDetails("");
+  };
+
   const handleConfirmSendInterviewEmail = async () => {
     if (!interviewPopupCandidate) return;
 
@@ -970,8 +1057,7 @@ export function CandidateList() {
         `Interview email sent to ${interviewPopupCandidate.name}`,
       );
 
-      setInterviewPopupCandidate(null);
-      setInterviewDateTime("");
+      closeInterviewEmailModal();
     }
   };
 
@@ -992,6 +1078,9 @@ export function CandidateList() {
   const handleRejectCandidate = (candidate: Candidate) => {
     setRejectPopupCandidate(candidate);
     setSendRejectEmail(true);
+    setRejectEmailStep(1);
+    setRejectReasonType("");
+    setRejectReasonDetails("");
   };
 
   const handleConfirmRejectCandidate = async () => {
@@ -1006,6 +1095,8 @@ export function CandidateList() {
 
     const isSent = await updateCandidateStatus(candidate.id, "rejected", {
       emailAction: sendRejectEmail,
+      reasonType: rejectReasonType,
+      reasonDetails: rejectReasonDetails,
     });
 
     setSendingEmailCandidateIds((prev) => {
@@ -1020,8 +1111,124 @@ export function CandidateList() {
           ? `Rejection email sent to ${candidate.name}`
           : `${candidate.name} rejected`,
       );
-      setRejectPopupCandidate(null);
+      closeRejectEmailModal();
     }
+  };
+
+  const openReasonModal = (candidate: Candidate) => {
+    setReasonPopupCandidate(candidate);
+    setRejectReasonType(candidate.latestEmailReasonType || "");
+    setRejectReasonDetails(
+      candidate.latestEmailReasonDetails || "",
+    );
+  };
+
+  const handleSaveReason = async () => {
+    if (!reasonPopupCandidate?.applicationId) return;
+
+    const currentUser = getStoredUser();
+    const reasonType = rejectReasonType;
+    const reasonDetails = rejectReasonDetails;
+
+    try {
+      await apiFetch(
+        `/applications/${reasonPopupCandidate.applicationId}/reason`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            actionUserId: currentUser?.id,
+            reasonType,
+            reasonDetails,
+          }),
+        },
+      );
+
+      setCandidates((prev) =>
+        prev.map((candidate) =>
+          candidate.applicationId === reasonPopupCandidate.applicationId
+            ? {
+                ...candidate,
+                latestEmailReasonType: reasonType || null,
+                latestEmailReasonDetails: reasonDetails || null,
+              }
+            : candidate,
+        ),
+      );
+
+      toast.success("Reason saved");
+      closeReasonModal();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to save reason",
+      );
+    }
+  };
+
+  const renderReasonFields = (
+    reasonType: string,
+    setReasonType: (value: string) => void,
+    reasonDetails: string,
+    setReasonDetails: (value: string) => void,
+  ) => {
+    const options = rejectionReasonTypes;
+    const activeColor = "border-red-500";
+    const activeDot = "bg-red-600";
+
+    return (
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-700">
+            Reason Type
+          </label>
+          <div className="flex w-full flex-nowrap gap-1.5">
+            {options.map((reason) => {
+              const isSelected = reasonType === reason;
+
+              return (
+                <button
+                  key={reason}
+                  type="button"
+                  className={`inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full border px-2.5 py-0 text-xs font-medium leading-none transition-colors ${
+                    isSelected
+                      ? `${activeColor} bg-slate-50 text-slate-900`
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                  onClick={() =>
+                    setReasonType(isSelected ? "" : reason)
+                  }
+                >
+                  <span
+                    className={`h-2 w-2 shrink-0 rounded-full ${
+                      isSelected ? activeDot : "bg-slate-300"
+                    }`}
+                  />
+                  {reason}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-700">
+            Reason Details
+          </label>
+          <textarea
+            rows={4}
+            maxLength={500}
+            placeholder="Enter details..."
+            className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm text-slate-700"
+            value={reasonDetails}
+            onChange={(event) => setReasonDetails(event.target.value)}
+          />
+          <p className="text-right text-xs text-slate-400">
+            {reasonDetails.length}/500
+          </p>
+        </div>
+      </div>
+    );
   };
 
   const [documentCandidate, setDocumentCandidate] =
@@ -1210,6 +1417,9 @@ export function CandidateList() {
                   <SelectItem value="score">
                     Highest Score
                   </SelectItem>
+                  <SelectItem value="cgpa">
+                    Best CGPA
+                  </SelectItem>
                   <SelectItem value="date">
                     Most Recent
                   </SelectItem>
@@ -1305,6 +1515,14 @@ export function CandidateList() {
             candidate.status === "interviewed";
           const isEmailSending = sendingEmailCandidateIds.has(
             candidate.id,
+          );
+          const needsReason =
+            candidate.status === "rejected" &&
+            !candidate.latestEmailReasonType &&
+            !candidate.latestEmailReasonDetails;
+          const hasReason = Boolean(
+            candidate.latestEmailReasonType ||
+              candidate.latestEmailReasonDetails,
           );
           const jobHistory = candidate.appliedJobHistory ?? [];
           const jobHistoryPageKey =
@@ -1488,6 +1706,42 @@ export function CandidateList() {
 
                   {expandedCandidate === candidate.id && (
                     <div className="pt-4 border-t border-slate-200 space-y-5">
+                      {hasReason && (
+                        <div>
+                          <div className="mb-2 text-sm font-semibold text-slate-700">
+                            Reason
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2">
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                              <div className="flex min-h-[42px] items-start justify-between gap-3">
+                                <div className="min-w-0 self-center">
+                                  {candidate.latestEmailReasonType && (
+                                    <div className="text-sm font-semibold leading-snug text-slate-900">
+                                      {candidate.latestEmailReasonType}
+                                    </div>
+                                  )}
+                                  {candidate.latestEmailReasonDetails && (
+                                    <p className="mt-0.5 text-xs leading-5 text-slate-500">
+                                      {candidate.latestEmailReasonDetails}
+                                    </p>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-white hover:text-[#003B7A]"
+                                  onClick={() => openReasonModal(candidate)}
+                                  aria-label="Edit reason"
+                                  title="Edit reason"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       <div>
                         <div className="font-medium mb-2 text-[22px] text-[#0f172b]">
                           Candidate Summary
@@ -1743,15 +1997,18 @@ export function CandidateList() {
                               Latest Email Sent By
                             </div>
                             <div className="mt-1 text-sm font-semibold text-slate-900">
-                              {candidate.lastEmailSentBy
-                                ? candidate.lastEmailSentBy
-                                : "Not sent yet"}
+                              {candidate.lastEmailSentBy ||
+                                candidate.latestRejectActionBy ||
+                                "Not sent yet"}
                             </div>
-                            {candidate.lastEmailSentBy && (
+                            {(candidate.lastEmailSentBy ||
+                              candidate.latestRejectActionBy) && (
                               <div className="mt-0.5 text-xs text-slate-500">
-                                {getEmailTypeLabel(
-                                  candidate.lastEmailType,
-                                )}
+                                {candidate.lastEmailSentBy
+                                  ? getEmailTypeLabel(
+                                      candidate.lastEmailType,
+                                    )
+                                  : "Rejected without email"}
                               </div>
                             )}
                           </div>
@@ -1795,50 +2052,62 @@ export function CandidateList() {
                     </div>
 
                     <div className="flex gap-2">
-                      <Button
-                        className={`text-white shadow-sm px-5 ${
-                          hasInterviewSent || isInterviewCompleted
-                            ? "bg-sky-700 hover:bg-sky-800 disabled:bg-sky-700 disabled:opacity-60"
-                            : "bg-[#003B7A] hover:bg-[#002f63]"
-                        }`}
-                        onClick={() => {
-                          if (!hasInterviewSent) {
-                            handleSendInterviewEmail(candidate);
-                            return;
-                          }
+                      {candidate.status !== "rejected" && (
+                        <>
+                          <Button
+                            className={`text-white shadow-sm px-5 ${
+                              hasInterviewSent || isInterviewCompleted
+                                ? "bg-sky-700 hover:bg-sky-800 disabled:bg-sky-700 disabled:opacity-60"
+                                : "bg-[#003B7A] hover:bg-[#002f63]"
+                            }`}
+                            onClick={() => {
+                              if (!hasInterviewSent) {
+                                handleSendInterviewEmail(candidate);
+                                return;
+                              }
 
-                          handleMarkInterviewed(candidate);
-                        }}
-                        disabled={
-                          isEmailSending ||
-                          candidate.status === "rejected" ||
-                          candidate.status === "filtered_out" ||
-                          isInterviewCompleted
-                        }
-                      >
-                        <Mail className="w-4 h-4 mr-2" />
-                        {isEmailSending
-                          ? "Sending..."
-                          : isInterviewCompleted
-                            ? "Interview Completed"
-                            : hasInterviewSent
-                              ? "Mark as Interviewed"
-                              : "Send Interview Email"}
-                      </Button>
+                              handleMarkInterviewed(candidate);
+                            }}
+                            disabled={
+                              isEmailSending ||
+                              candidate.status === "filtered_out" ||
+                              isInterviewCompleted
+                            }
+                          >
+                            <Mail className="w-4 h-4 mr-2" />
+                            {isEmailSending
+                              ? "Sending..."
+                              : isInterviewCompleted
+                                ? "Interview Completed"
+                                : hasInterviewSent
+                                  ? "Mark as Interviewed"
+                                  : "Send Interview Email"}
+                          </Button>
 
-                      <Button
-                        variant="outline"
-                        className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 shadow-sm px-5"
-                        onClick={() =>
-                          handleRejectCandidate(candidate)
-                        }
-                        disabled={
-                          isEmailSending ||
-                          candidate.status === "rejected"
-                        }
-                      >
-                        {isEmailSending ? "Sending..." : "Reject"}
-                      </Button>
+                          <Button
+                            variant="outline"
+                            className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 shadow-sm px-5"
+                            onClick={() =>
+                              handleRejectCandidate(candidate)
+                            }
+                            disabled={isEmailSending}
+                          >
+                            {isEmailSending ? "Sending..." : "Reject"}
+                          </Button>
+                        </>
+                      )}
+
+                      {candidate.status === "rejected" && needsReason && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-slate-300 text-slate-700 hover:bg-slate-50 shadow-sm px-4"
+                          onClick={() => openReasonModal(candidate)}
+                          disabled={isEmailSending}
+                        >
+                          Add Reason
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1971,10 +2240,7 @@ export function CandidateList() {
       {interviewPopupCandidate && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-          onClick={() => {
-            setInterviewPopupCandidate(null);
-            setInterviewDateTime("");
-          }}
+          onClick={closeInterviewEmailModal}
         >
           <div
             className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl"
@@ -1985,8 +2251,7 @@ export function CandidateList() {
                 Interview Email Preview
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Review the draft email and enter the interview
-                date and time before sending.
+                Review the draft email and enter the interview date and time before sending.
               </p>
             </div>
 
@@ -2043,10 +2308,7 @@ UWC Berhad`}
                 disabled={sendingEmailCandidateIds.has(
                   interviewPopupCandidate.id,
                 )}
-                onClick={() => {
-                  setInterviewPopupCandidate(null);
-                  setInterviewDateTime("");
-                }}
+                onClick={closeInterviewEmailModal}
               >
                 Cancel
               </Button>
@@ -2073,7 +2335,7 @@ UWC Berhad`}
       {rejectPopupCandidate && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-          onClick={() => setRejectPopupCandidate(null)}
+          onClick={closeRejectEmailModal}
         >
           <div
             className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl"
@@ -2081,46 +2343,62 @@ UWC Berhad`}
           >
             <div className="border-b border-slate-200 px-6 py-4">
               <h2 className="text-xl font-semibold text-slate-900">
-                Rejection Email Preview
+                {rejectEmailStep === 1
+                  ? "Rejection Email Preview"
+                  : "Provide Reason"}
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Review the rejection action before confirming.
+                {rejectEmailStep === 1
+                  ? "Review the rejection action before confirming."
+                  : "Please provide a reason for rejecting this candidate."}
               </p>
             </div>
 
             <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-              <div className="flex items-center gap-2">
-                <input
-                  id="sendRejectEmail"
-                  type="checkbox"
-                  checked={sendRejectEmail}
-                  onChange={(event) =>
-                    setSendRejectEmail(event.target.checked)
-                  }
-                  className="h-4 w-4 rounded border-slate-300"
-                />
-                <label
-                  htmlFor="sendRejectEmail"
-                  className="text-sm font-medium text-slate-700"
-                >
-                  Send rejection email to candidate
-                </label>
-              </div>
+              {rejectEmailStep === 1 ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="sendRejectEmail"
+                      type="checkbox"
+                      checked={sendRejectEmail}
+                      onChange={(event) =>
+                        setSendRejectEmail(event.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    <label
+                      htmlFor="sendRejectEmail"
+                      className="text-sm font-medium text-slate-700"
+                    >
+                      Send rejection email to candidate
+                    </label>
+                  </div>
 
-              {sendRejectEmail && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">
-                    Message
-                  </label>
-                  <textarea
-                    readOnly
-                    rows={11}
-                    className="w-full rounded-md border border-input bg-slate-50 px-3 py-2 text-sm text-slate-700"
-                    value={`Subject: ${
-                      buildRejectEmailPreview(rejectPopupCandidate).subject
-                    }\n\n${buildRejectEmailPreview(rejectPopupCandidate).body}`}
-                  />
-                </div>
+                  {sendRejectEmail && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700">
+                        Message
+                      </label>
+                      <textarea
+                        readOnly
+                        rows={11}
+                        className="w-full rounded-md border border-input bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                        value={`Subject: ${
+                          buildRejectEmailPreview(rejectPopupCandidate)
+                            .subject
+                        }\n\n${buildRejectEmailPreview(rejectPopupCandidate).body}`}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                renderReasonFields(
+                  rejectReasonType,
+                  setRejectReasonType,
+                  rejectReasonDetails,
+                  setRejectReasonDetails,
+                )
               )}
             </div>
 
@@ -2131,10 +2409,23 @@ UWC Berhad`}
                 disabled={sendingEmailCandidateIds.has(
                   rejectPopupCandidate.id,
                 )}
-                onClick={() => setRejectPopupCandidate(null)}
+                onClick={closeRejectEmailModal}
               >
                 Cancel
               </Button>
+
+              {rejectEmailStep === 2 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={sendingEmailCandidateIds.has(
+                    rejectPopupCandidate.id,
+                  )}
+                  onClick={() => setRejectEmailStep(1)}
+                >
+                  Back
+                </Button>
+              )}
 
               <Button
                 type="button"
@@ -2142,13 +2433,66 @@ UWC Berhad`}
                 disabled={sendingEmailCandidateIds.has(
                   rejectPopupCandidate.id,
                 )}
-                onClick={handleConfirmRejectCandidate}
+                onClick={
+                  rejectEmailStep === 1
+                    ? () => setRejectEmailStep(2)
+                    : handleConfirmRejectCandidate
+                }
               >
                 {sendingEmailCandidateIds.has(rejectPopupCandidate.id)
                   ? "Sending..."
-                  : sendRejectEmail
-                    ? "Send Email"
-                    : "Confirm Reject"}
+                  : rejectEmailStep === 1
+                    ? "Next"
+                    : sendRejectEmail
+                      ? "Send Email"
+                      : "Confirm Reject"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reasonPopupCandidate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={closeReasonModal}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-slate-200 px-6 py-4">
+              <h2 className="text-xl font-semibold text-slate-900">
+                Add Reason
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Add an optional reason for the latest email action.
+              </p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {renderReasonFields(
+                rejectReasonType,
+                setRejectReasonType,
+                rejectReasonDetails,
+                setRejectReasonDetails,
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeReasonModal}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="bg-red-600 text-white hover:bg-red-700"
+                onClick={handleSaveReason}
+              >
+                Save Reason
               </Button>
             </div>
           </div>
@@ -2157,5 +2501,3 @@ UWC Berhad`}
     </PageLayout>
   );
 }
-
-

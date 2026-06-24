@@ -45,6 +45,8 @@ try {
         job_candidates($mysqli, (int) $segments[1]);
     } elseif ($method === "PATCH" && count($segments) === 2 && $segments[0] === "applications") {
         update_application($mysqli, (int) $segments[1]);
+    } elseif ($method === "PATCH" && count($segments) === 3 && $segments[0] === "applications" && $segments[2] === "reason") {
+        update_application_action_reason($mysqli, (int) $segments[1]);
     } elseif ($method === "GET" && count($segments) === 2 && $segments[0] === "apply") {
         apply_job($mysqli, $segments[1]);
     } elseif ($method === "POST" && count($segments) === 2 && $segments[0] === "apply") {
@@ -306,6 +308,8 @@ function job_candidates(mysqli $db, int $jobId): void
         respond(["error" => "Job not found"], 404);
     }
 
+    ensure_hr_action_log_reason_columns($db);
+
     $candidates = rows(
         $db,
         "SELECT
@@ -328,6 +332,11 @@ function job_candidates(mysqli $db, int $jobId): void
           latest_email.email_type AS lastEmailType,
           latest_email.sent_at AS lastEmailSentAt,
           email_sender.full_name AS lastEmailSentBy,
+          latest_reject.action_type AS latestRejectActionType,
+          reject_actor.full_name AS latestRejectActionBy,
+          latest_reason.action_log_id AS latestEmailActionLogId,
+          latest_reason.reason_type AS latestEmailReasonType,
+          latest_reason.reason_details AS latestEmailReasonDetails,
           a.eligibility_status AS eligibilityStatus,
           a.total_score AS score,
           a.ai_summary AS summary,
@@ -364,6 +373,27 @@ function job_candidates(mysqli $db, int $jobId): void
           ) latest ON latest.latest_email_id = el.id
         ) latest_email ON latest_email.application_id = a.id
         LEFT JOIN users email_sender ON email_sender.id = latest_email.sent_by_user_id
+        LEFT JOIN (
+          SELECT hal.application_id, hal.user_id, hal.action_type
+          FROM hr_action_logs hal
+          JOIN (
+            SELECT application_id, MAX(id) AS latest_action_id
+            FROM hr_action_logs
+            WHERE action_type IN ('reject_candidate', 'send_rejection_email')
+            GROUP BY application_id
+          ) latest_action ON latest_action.latest_action_id = hal.id
+        ) latest_reject ON latest_reject.application_id = a.id
+        LEFT JOIN users reject_actor ON reject_actor.id = latest_reject.user_id
+        LEFT JOIN (
+          SELECT hal.application_id, hal.id AS action_log_id, hal.reason_type, hal.reason_details
+          FROM hr_action_logs hal
+          JOIN (
+            SELECT application_id, MAX(id) AS latest_action_id
+            FROM hr_action_logs
+            WHERE action_type = 'rejection_reason'
+            GROUP BY application_id
+          ) latest_action ON latest_action.latest_action_id = hal.id
+        ) latest_reason ON latest_reason.application_id = a.id
         WHERE a.job_id = ?
         ORDER BY
           CASE WHEN a.rank_no IS NULL THEN 999999 ELSE a.rank_no END,
@@ -529,6 +559,8 @@ function update_application(mysqli $db, int $applicationId): void
     $actionUserId = (int) ($data["actionUserId"] ?? 0);
     $interviewDateTime = trim((string) ($data["interviewDateTime"] ?? ""));
     $emailAction = filter_var($data["emailAction"] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $reasonType = trim((string) ($data["reasonType"] ?? ""));
+    $reasonDetails = trim((string) ($data["reasonDetails"] ?? ""));
     $allowed = ["new", "reviewed", "shortlisted", "interview", "interviewed", "rejected", "filtered_out"];
 
     if (!in_array($status, $allowed, true)) {
@@ -564,6 +596,9 @@ function update_application(mysqli $db, int $applicationId): void
 
     $updated = row($db, "SELECT application_status, is_shortlisted, interview_sent_at, assigned_hr_user_id FROM applications WHERE id = ?", "i", [$applicationId]);
     log_application_action($db, $applicationId, $actionUserId, $status, $emailAction, $interviewDateTime, $before ?: [], $updated ?: []);
+    if ($status === "rejected" && ($reasonType !== "" || $reasonDetails !== "")) {
+        log_rejection_reason_action($db, $applicationId, $actionUserId, $reasonType, $reasonDetails, false);
+    }
     respond(["ok" => true, "application" => $updated ?: []]);
 }
 
@@ -598,47 +633,33 @@ function log_application_action(
 
     $actionType = "status_update";
     $actionLabel = "Updated Application Status";
-    $details = "";
 
     if ($status === "reviewed") {
         $actionType = "review_candidate";
         $actionLabel = "Reviewed Candidate";
-        $details = "Opened candidate details and marked the application as reviewed.";
     } elseif ($status === "shortlisted") {
         $actionType = "shortlist_candidate";
         $actionLabel = "Shortlisted Candidate";
-        $details = "Marked the candidate as shortlisted.";
     } elseif ($status === "interview") {
         $actionType = "send_interview_email";
         $actionLabel = "Sent Interview Email";
-        $details = $emailAction
-            ? "Sent interview email" . ($interviewDateTime !== "" ? " with interview date/time: {$interviewDateTime}." : ".")
-            : "Moved the candidate into interview status.";
     } elseif ($status === "interviewed") {
         $actionType = "mark_interviewed";
         $actionLabel = "Marked Interview Completed";
-        $details = "Marked the candidate interview as completed.";
     } elseif ($status === "rejected") {
-        $actionType = "reject_candidate";
-        $actionLabel = "Sent Rejected Email";
-        $details = $emailAction ? "Rejected the candidate and sent rejection email." : "Rejected the candidate.";
+        $actionType = $emailAction ? "send_rejection_email" : "reject_candidate";
+        $actionLabel = $emailAction ? "Rejection Email Sent" : "Rejected";
     } elseif ($status === "filtered_out") {
         $actionType = "filter_out_candidate";
         $actionLabel = "Filtered Out Candidate";
-        $details = "Marked the candidate as filtered out.";
     }
 
-    $beforeStatus = (string) ($before["application_status"] ?? "");
-    $afterStatus = (string) ($after["application_status"] ?? "");
-    if ($beforeStatus !== "" || $afterStatus !== "") {
-        $details .= ($details !== "" ? " " : "") . "Status: " . ($beforeStatus ?: "-") . " -> " . ($afterStatus ?: "-") . ".";
-    }
-
+    ensure_hr_action_log_reason_columns($db);
     exec_stmt(
         $db,
-        "INSERT INTO hr_action_logs (user_id, application_id, job_id, candidate_id, action_type, action_label, details)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
-        "iiiisss",
+        "INSERT INTO hr_action_logs (user_id, application_id, job_id, candidate_id, action_type, action_label, reason_type, reason_details)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "iiiissss",
         [
             $userId,
             $applicationId,
@@ -646,9 +667,83 @@ function log_application_action(
             (int) $application["candidateId"],
             $actionType,
             $actionLabel,
-            $details,
+            null,
+            null,
         ]
     );
+}
+
+function log_rejection_reason_action(
+    mysqli $db,
+    int $applicationId,
+    int $userId,
+    string $reasonType,
+    string $reasonDetails,
+    bool $isUpdate
+): void {
+    if ($userId <= 0) {
+        return;
+    }
+
+    $application = row(
+        $db,
+        "SELECT job_id AS jobId, candidate_id AS candidateId
+         FROM applications
+         WHERE id = ?
+         LIMIT 1",
+        "i",
+        [$applicationId]
+    );
+
+    if (!$application) {
+        return;
+    }
+
+    ensure_hr_action_log_reason_columns($db);
+    exec_stmt(
+        $db,
+        "INSERT INTO hr_action_logs (user_id, application_id, job_id, candidate_id, action_type, action_label, reason_type, reason_details)
+         VALUES (?, ?, ?, ?, 'rejection_reason', ?, NULLIF(?, ''), NULLIF(?, ''))",
+        "iiiisss",
+        [
+            $userId,
+            $applicationId,
+            (int) $application["jobId"],
+            (int) $application["candidateId"],
+            $isUpdate ? "Updated Rejection Reason" : "Added Rejection Reason",
+            $reasonType,
+            $reasonDetails,
+        ]
+    );
+}
+
+function update_application_action_reason(mysqli $db, int $applicationId): void
+{
+    $data = input_json();
+    $actionUserId = (int) ($data["actionUserId"] ?? 0);
+    $reasonType = trim((string) ($data["reasonType"] ?? ""));
+    $reasonDetails = trim((string) ($data["reasonDetails"] ?? ""));
+
+    if ($actionUserId <= 0) {
+        respond(["error" => "Action user is required"], 422);
+    }
+
+    ensure_hr_action_log_reason_columns($db);
+    $existingReason = row(
+        $db,
+        "SELECT id
+         FROM hr_action_logs
+         WHERE application_id = ?
+           AND action_type = 'rejection_reason'
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1",
+        "i",
+        [$applicationId]
+    );
+
+    log_rejection_reason_action($db, $applicationId, $actionUserId, $reasonType, $reasonDetails, $existingReason !== null);
+
+    respond(["ok" => true]);
 }
 
 function apply_job(mysqli $db, string $jobCode): void
@@ -919,6 +1014,38 @@ function create_score_breakdown(mysqli $db, int $applicationId, int $jobId, floa
                 ]
             );
         }
+    }
+}
+
+function table_column_exists(mysqli $db, string $table, string $column): bool
+{
+    $existing = row(
+        $db,
+        "SELECT COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = ?
+           AND COLUMN_NAME = ?
+         LIMIT 1",
+        "ss",
+        [$table, $column]
+    );
+
+    return $existing !== null;
+}
+
+function ensure_hr_action_log_reason_columns(mysqli $db): void
+{
+    if (!table_column_exists($db, "hr_action_logs", "reason_type")) {
+        exec_stmt($db, "ALTER TABLE hr_action_logs ADD COLUMN reason_type VARCHAR(120) NULL AFTER action_label");
+    }
+
+    if (!table_column_exists($db, "hr_action_logs", "reason_details")) {
+        exec_stmt($db, "ALTER TABLE hr_action_logs ADD COLUMN reason_details TEXT NULL AFTER reason_type");
+    }
+
+    if (table_column_exists($db, "hr_action_logs", "details")) {
+        exec_stmt($db, "ALTER TABLE hr_action_logs DROP COLUMN details");
     }
 }
 
@@ -1551,6 +1678,8 @@ function user_action_logs(mysqli $db, int $userId): void
         respond(["error" => "Invalid user"], 422);
     }
 
+    ensure_hr_action_log_reason_columns($db);
+
     respond([
         "actions" => rows(
             $db,
@@ -1558,7 +1687,8 @@ function user_action_logs(mysqli $db, int $userId): void
                hal.id,
                hal.action_type AS actionType,
                hal.action_label AS actionLabel,
-               hal.details,
+               hal.reason_type AS reasonType,
+               hal.reason_details AS reasonDetails,
                hal.created_at AS createdAt,
                hal.application_id AS applicationId,
                j.id AS jobId,
@@ -1697,18 +1827,60 @@ function hr_efficiency(mysqli $db): void
           j.id AS jobId,
           j.title AS jobTitle,
           j.department AS jobDepartment,
+          a.application_status AS currentStatus,
           a.submitted_at AS applicationDate,
-          COALESCE(latest_email.sent_at, a.reviewed_at) AS lastActionDate,
+          COALESCE(
+            CASE
+              WHEN first_email.sent_at IS NOT NULL
+                AND (first_direct_reject.rejected_at IS NULL OR first_email.sent_at <= first_direct_reject.rejected_at)
+                THEN first_email.sent_at
+              ELSE first_direct_reject.rejected_at
+            END,
+            a.reviewed_at
+          ) AS lastActionDate,
           CASE
-            WHEN latest_email.sent_at IS NULL THEN NULL
-            ELSE GREATEST(0, TIMESTAMPDIFF(MINUTE, a.submitted_at, latest_email.sent_at))
+            WHEN first_email.sent_at IS NOT NULL
+              AND (first_direct_reject.rejected_at IS NULL OR first_email.sent_at <= first_direct_reject.rejected_at)
+              THEN GREATEST(0, TIMESTAMPDIFF(MINUTE, a.submitted_at, first_email.sent_at))
+            WHEN first_direct_reject.rejected_at IS NOT NULL
+              THEN GREATEST(0, TIMESTAMPDIFF(MINUTE, a.submitted_at, first_direct_reject.rejected_at))
+            ELSE NULL
           END AS processingMinutes,
-          CASE latest_email.email_type
-            WHEN 'interview' THEN 'interview_email_sent'
-            WHEN 'reject' THEN 'rejection_email_sent'
+          CASE
+            WHEN first_email.sent_at IS NOT NULL
+              AND (first_direct_reject.rejected_at IS NULL OR first_email.sent_at <= first_direct_reject.rejected_at)
+              THEN first_email.email_type
+            ELSE NULL
+          END AS emailOutcome,
+          CASE
+            WHEN first_email.sent_at IS NOT NULL
+              AND (first_direct_reject.rejected_at IS NULL OR first_email.sent_at <= first_direct_reject.rejected_at)
+              AND first_email.email_type = 'interview'
+              THEN 'interview_email_sent'
+            WHEN first_email.sent_at IS NOT NULL
+              AND (first_direct_reject.rejected_at IS NULL OR first_email.sent_at <= first_direct_reject.rejected_at)
+              AND first_email.email_type = 'reject'
+              THEN 'rejection_email_sent'
+            WHEN first_direct_reject.rejected_at IS NOT NULL
+              THEN 'rejected'
             ELSE a.application_status
           END AS processingStatus,
-          latest_email.email_type AS emailOutcome,
+          CASE
+            WHEN first_email.sent_at IS NOT NULL
+              AND first_email.email_type = 'interview'
+              AND a.application_status = 'rejected'
+              AND latest_reject_action.action_type = 'send_rejection_email'
+              THEN 'rejection_email_sent'
+            WHEN first_email.sent_at IS NOT NULL
+              AND first_email.email_type = 'interview'
+              AND a.application_status = 'rejected'
+              THEN 'rejected'
+            WHEN first_email.sent_at IS NOT NULL
+              AND first_email.email_type = 'interview'
+              AND a.application_status = 'interviewed'
+              THEN 'interviewed'
+            ELSE NULL
+          END AS followUpStatus,
           COALESCE(u.full_name, 'Unassigned') AS hrAssigned
          FROM applications a
          JOIN candidates c ON c.id = a.candidate_id
@@ -1718,17 +1890,47 @@ function hr_efficiency(mysqli $db): void
            SELECT el.application_id, el.email_type, el.sent_at
            FROM email_logs el
            JOIN (
-             SELECT email_log.application_id, MAX(email_log.id) AS latest_email_id
+             SELECT email_log.application_id, MIN(email_log.id) AS first_email_id
              FROM email_logs email_log
+             JOIN (
+               SELECT earliest_email.application_id, MIN(earliest_email.sent_at) AS first_sent_at
+               FROM email_logs earliest_email
+               JOIN applications current_application ON current_application.id = earliest_email.application_id
+               WHERE earliest_email.status = 'sent'
+                 AND earliest_email.email_type IN ('interview', 'reject')
+                 AND earliest_email.sent_at >= current_application.submitted_at
+               GROUP BY earliest_email.application_id
+             ) first_sent ON first_sent.application_id = email_log.application_id
+               AND first_sent.first_sent_at = email_log.sent_at
              JOIN applications current_application ON current_application.id = email_log.application_id
              WHERE email_log.status = 'sent'
                AND email_log.email_type IN ('interview', 'reject')
                AND email_log.sent_at >= current_application.submitted_at
              GROUP BY email_log.application_id
-           ) latest ON latest.latest_email_id = el.id
-         ) latest_email ON latest_email.application_id = a.id
+           ) first_email_id ON first_email_id.first_email_id = el.id
+         ) first_email ON first_email.application_id = a.id
+         LEFT JOIN (
+           SELECT action_log.application_id, MIN(action_log.created_at) AS rejected_at
+           FROM hr_action_logs action_log
+           JOIN applications current_application ON current_application.id = action_log.application_id
+           WHERE action_log.action_type = 'reject_candidate'
+             AND action_log.created_at >= current_application.submitted_at
+           GROUP BY action_log.application_id
+         ) first_direct_reject ON first_direct_reject.application_id = a.id
+         LEFT JOIN (
+           SELECT action_log.application_id, action_log.action_type
+           FROM hr_action_logs action_log
+           JOIN (
+             SELECT reject_log.application_id, MAX(reject_log.id) AS latest_reject_action_id
+             FROM hr_action_logs reject_log
+             JOIN applications current_application ON current_application.id = reject_log.application_id
+             WHERE reject_log.action_type IN ('reject_candidate', 'send_rejection_email')
+               AND reject_log.created_at >= current_application.submitted_at
+             GROUP BY reject_log.application_id
+           ) latest_reject ON latest_reject.latest_reject_action_id = action_log.id
+         ) latest_reject_action ON latest_reject_action.application_id = a.id
          WHERE a.application_status <> 'new'
-         ORDER BY COALESCE(latest_email.sent_at, a.reviewed_at) DESC, a.id DESC"
+         ORDER BY lastActionDate DESC, a.id DESC"
     );
 
     respond(["data" => $summary, "details" => $details]);

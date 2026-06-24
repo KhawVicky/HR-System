@@ -53,6 +53,14 @@ export type ProcessingAnalyticsItem = {
   jobId: number;
   jobTitle: string;
   jobDepartment: string;
+  currentStatus?:
+    | "new"
+    | "reviewed"
+    | "shortlisted"
+    | "interview"
+    | "interviewed"
+    | "rejected"
+    | "filtered_out";
   applicationDate: string;
   lastActionDate: string | null;
   processingMinutes: number | null;
@@ -65,6 +73,7 @@ export type ProcessingAnalyticsItem = {
     | "filtered_out"
     | "interview_email_sent"
     | "rejection_email_sent";
+  followUpStatus?: "rejected" | "interviewed" | "rejection_email_sent" | null;
   emailOutcome: "interview" | "reject" | null;
   hrAssigned: string;
 };
@@ -96,6 +105,12 @@ const initialFilters: AnalyticsFilters = {
   customStart: "",
   customEnd: "",
 };
+
+const isCompletedProcessingItem = (item: ProcessingAnalyticsItem) =>
+  item.processingMinutes !== null &&
+  (item.emailOutcome === "interview" ||
+    item.emailOutcome === "reject" ||
+    item.processingStatus === "rejected");
 
 const parseDate = (value: string) =>
   new Date(value.includes(" ") ? value.replace(" ", "T") : value);
@@ -888,12 +903,7 @@ export function HRProcessingAnalytics({
   const [filters, setFilters] = useState(initialFilters);
 
   const completedItems = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          item.processingMinutes !== null &&
-          (item.emailOutcome === "interview" || item.emailOutcome === "reject"),
-      ),
+    () => items.filter(isCompletedProcessingItem),
     [items],
   );
 

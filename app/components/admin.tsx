@@ -108,7 +108,8 @@ type UserActionLog = {
   id: number;
   actionType: string;
   actionLabel: string;
-  details: string | null;
+  reasonType: string | null;
+  reasonDetails: string | null;
   createdAt: string;
   applicationId: number | null;
   jobId: number | null;
@@ -147,16 +148,20 @@ function formatActionDate(value: string) {
 }
 
 function getActionBadgeClass(actionType: string) {
-  if (actionType.includes("email")) {
-    return "bg-blue-50 text-blue-700 border-blue-200";
-  }
-
   if (actionType.includes("shortlist")) {
     return "bg-amber-50 text-amber-700 border-amber-200";
   }
 
   if (actionType.includes("reject")) {
     return "bg-red-50 text-red-700 border-red-200";
+  }
+
+  if (actionType.includes("reason")) {
+    return "bg-slate-100 text-slate-700 border-slate-200";
+  }
+
+  if (actionType.includes("email")) {
+    return "bg-blue-50 text-blue-700 border-blue-200";
   }
 
   if (actionType.includes("review")) {
@@ -168,7 +173,15 @@ function getActionBadgeClass(actionType: string) {
 
 function formatActionTypeLabel(actionType: string) {
   if (actionType === "reject_candidate") {
-    return "Sent Rejected Email";
+    return "Rejected";
+  }
+
+  if (actionType === "send_rejection_email") {
+    return "Rejection Email Sent";
+  }
+
+  if (actionType === "rejection_reason") {
+    return "Rejection Reason";
   }
 
   return actionType
@@ -491,7 +504,8 @@ export function UserManagementPage({
       return [
         action.actionType,
         action.actionLabel,
-        action.details,
+        action.reasonType,
+        action.reasonDetails,
         action.candidateName,
         action.candidateEmail,
         action.jobTitle,

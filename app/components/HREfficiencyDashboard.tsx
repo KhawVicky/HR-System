@@ -70,8 +70,8 @@ const processingStatusLabel = {
   interviewed: "Interviewed",
   rejected: "Rejected",
   filtered_out: "Filtered Out",
-  interview_email_sent: "Interview email sent",
-  rejection_email_sent: "Rejection email sent",
+  interview_email_sent: "Interview Email Sent",
+  rejection_email_sent: "Rejection Email Sent",
 };
 
 const processingStatusClass = {
@@ -84,6 +84,11 @@ const processingStatusClass = {
   interview_email_sent: "bg-blue-50 text-blue-700",
   rejection_email_sent: "bg-red-50 text-red-700",
 };
+
+const getFollowUpStatus = (item: CandidateProcessing) =>
+  item.processingStatus === "interview_email_sent"
+    ? item.followUpStatus
+    : null;
 
 type HREfficiencyDashboardProps = {
   embedded?: boolean;
@@ -264,7 +269,9 @@ export function HREfficiencyDashboard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {pagedProcessingData.map((item, index) => (
+                  {pagedProcessingData.map((item, index) => {
+                    const followUpStatus = getFollowUpStatus(item);
+                    return (
                     <tr
                       key={index}
                       className="transition-colors hover:bg-slate-50"
@@ -300,17 +307,27 @@ export function HREfficiencyDashboard({
                         <p className="font-medium leading-snug text-slate-700">
                           {formatProcessingTime(item.processingMinutes)}
                         </p>
-                        <span
-                          className={`mt-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${processingStatusClass[item.processingStatus]}`}
-                        >
-                          {processingStatusLabel[item.processingStatus]}
-                        </span>
+                        <div className="mt-1.5 flex flex-col items-start gap-1">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${processingStatusClass[item.processingStatus]}`}
+                          >
+                            {processingStatusLabel[item.processingStatus]}
+                          </span>
+                          {followUpStatus && (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${processingStatusClass[followUpStatus]}`}
+                            >
+                              {processingStatusLabel[followUpStatus]}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-5 leading-snug text-slate-600 [overflow-wrap:anywhere]">
                         {item.hrAssigned}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

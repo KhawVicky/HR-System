@@ -3,6 +3,7 @@
 ## Current Status
 
 - React frontend prototype has been created from the provided source archive.
+- Root `README.md` has been added with the GitHub project overview, workflow, features, setup instructions, status, limitations, and project information.
 - Vite, TypeScript, React, Tailwind, and project dependencies have been configured.
 - Tailwind styling issue was fixed by adding `@tailwindcss/vite`.
 - UWC Berhad logo image has replaced the temporary logo.
@@ -118,3 +119,16 @@
 - Updated the candidate card interview flow to use one primary interview button. The button now shows `Send Interview Email`, then `Mark as Interviewed` after the interview email is sent, then disabled `Interview Completed` after HR marks the candidate as interviewed. Added the new `interviewed` application status in the database/API and kept rejection available through a confirmation popup.
 - Updated the reject action popup into a rejection email preview modal. Candidate List now loads the Notification Settings rejection template, replaces candidate/job/company placeholders, and shows the same subject/body preview before HR sends the rejection email.
 - Changed the HR analytics trend chart from average processing time to completed application volume. The chart is now titled `Completed Applications Trend`, uses completed application count on the y-axis, and keeps average processing time available in the tooltip/table context.
+- Changed interview and rejection email actions into a two-step modal flow. HR now reviews the email preview first, then provides required reason type and reason details before sending; the selected reason is included in the HR action log details.
+- Split HR action log reasons into dedicated `reason_type` and `reason_details` fields, removed use of the old `details` field, made email action reasons optional, and added an `Add Reason` follow-up button for interview/rejection email actions that were sent without a reason.
+- Simplified interview email sending back to a single-step preview flow with no reason selection. Reason display now appears under Recruitment Handling only when a reason exists, and follow-up `Add Reason` is limited to rejection email actions.
+- Split rejection audit actions into `Rejected`, `Rejection Email Sent`, and separate `Rejection Reason` action logs. Recent Processing and HR action history now use matching rejection badge wording, while reason text remains stored in `hr_action_logs.reason_type` and `hr_action_logs.reason_details`.
+- Updated rejected candidate cards so Interview and Reject actions are hidden after rejection. If the rejected candidate has no saved rejection reason, only the `Add Reason` action remains visible.
+- Fixed rejected candidates without email so `Add Reason` still appears when no rejection reason is saved. Candidate cards now show the rejecting HR user with `Rejected without email` in the handling panel when HR rejects without sending an email.
+- Updated HR Efficiency Recent Processing Details so rejected candidates without a sent rejection email still show processing time, calculated from application submission to the reject action timestamp.
+- Aligned HR processing analytics with Recent Processing Details: All Completed Actions now includes rejected-without-email applications that have processing time, while the specific Interview/Rejection Email filters still only count actual sent email outcomes.
+- Locked HR Efficiency Recent Processing Details to the first completed processing action per application. If an interview email is sent first, later rejection actions no longer replace the original last action date, status, or processing time.
+- Recent Processing Details now also shows a follow-up `Rejected` badge under `Interview Email Sent` when a candidate is rejected after the interview email, while keeping the original interview completion time locked.
+- Recent Processing Details also shows a follow-up `Interviewed` badge under `Interview Email Sent` when HR later marks the interview as completed, without changing the locked processing time.
+- Recent Processing Details follow-up rejection badges now match normal rejection wording: `Rejection Email Sent` when a later rejection email was sent, and `Rejected` when HR rejected without sending email.
+- Moved candidate rejection Reason details to the top of the expanded candidate card and changed the Reason label into a section title outside the card, matching the Recruitment Handling section style.
