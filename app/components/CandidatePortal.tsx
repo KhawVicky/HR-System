@@ -224,7 +224,7 @@ function CandidateLayout({ children }: { children: React.ReactNode }) {
               </>
             ) : (
               <Button variant="ghost" size="sm" asChild>
-                <Link to="/candidate/login">Candidate Login</Link>
+                <Link to="/candidate/login">Login</Link>
               </Button>
             )}
           </nav>
