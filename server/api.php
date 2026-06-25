@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: Content-Type");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Access-Control-Allow-Methods: GET, POST, PATCH, OPTIONS");
 header("Content-Type: application/json");
 
@@ -31,6 +31,28 @@ $method = $_SERVER["REQUEST_METHOD"];
 try {
     if ($method === "POST" && route_is($segments, ["auth", "login"])) {
         login($mysqli);
+    } elseif ($method === "POST" && route_is($segments, ["candidate-auth", "register"])) {
+        candidate_register($mysqli);
+    } elseif ($method === "POST" && route_is($segments, ["candidate-auth", "login"])) {
+        candidate_login($mysqli);
+    } elseif ($method === "POST" && route_is($segments, ["candidate-auth", "logout"])) {
+        candidate_logout($mysqli);
+    } elseif ($method === "GET" && route_is($segments, ["candidate", "me"])) {
+        candidate_me($mysqli);
+    } elseif ($method === "PATCH" && route_is($segments, ["candidate", "profile"])) {
+        candidate_update_profile($mysqli);
+    } elseif ($method === "PATCH" && route_is($segments, ["candidate", "password"])) {
+        candidate_update_password($mysqli);
+    } elseif ($method === "GET" && route_is($segments, ["career", "jobs"])) {
+        career_jobs($mysqli);
+    } elseif ($method === "GET" && count($segments) === 3 && $segments[0] === "career" && $segments[1] === "jobs") {
+        career_job_details($mysqli, $segments[2]);
+    } elseif ($method === "GET" && route_is($segments, ["candidate", "applications"])) {
+        candidate_applications($mysqli);
+    } elseif ($method === "GET" && count($segments) === 3 && $segments[0] === "candidate" && $segments[1] === "applications") {
+        candidate_application_details($mysqli, (int) $segments[2]);
+    } elseif ($method === "PATCH" && count($segments) === 4 && $segments[0] === "candidate" && $segments[1] === "applications" && $segments[3] === "withdraw") {
+        candidate_withdraw_application($mysqli, (int) $segments[2]);
     } elseif ($method === "GET" && route_is($segments, ["dashboard"])) {
         dashboard($mysqli);
     } elseif ($method === "GET" && route_is($segments, ["jobs"])) {
@@ -183,6 +205,583 @@ function login(mysqli $db): void
 
     exec_stmt($db, "UPDATE users SET last_login_at = NOW() WHERE id = ?", "i", [(int) $user["id"]]);
     respond(["user" => $user]);
+}
+
+function ensure_candidate_portal_schema(mysqli $db): void
+{
+    if (!table_column_exists($db, "candidates", "address")) {
+        exec_stmt($db, "ALTER TABLE candidates ADD COLUMN address VARCHAR(500) NULL AFTER phone");
+    }
+    if (!table_column_exists($db, "candidates", "education")) {
+        exec_stmt($db, "ALTER TABLE candidates ADD COLUMN education VARCHAR(500) NULL AFTER address");
+    }
+    if (!table_column_exists($db, "candidates", "default_resume_file_name")) {
+        exec_stmt($db, "ALTER TABLE candidates ADD COLUMN default_resume_file_name VARCHAR(255) NULL AFTER education");
+    }
+    if (!table_column_exists($db, "candidates", "default_resume_path")) {
+        exec_stmt($db, "ALTER TABLE candidates ADD COLUMN default_resume_path VARCHAR(500) NULL AFTER default_resume_file_name");
+    }
+
+    exec_stmt(
+        $db,
+        "CREATE TABLE IF NOT EXISTS candidate_accounts (
+          id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          candidate_id INT UNSIGNED NOT NULL,
+          email VARCHAR(180) NOT NULL UNIQUE,
+          password_hash VARCHAR(255) NOT NULL,
+          status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+          last_login_at DATETIME NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          CONSTRAINT fk_candidate_accounts_candidate FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
+          UNIQUE KEY uq_candidate_accounts_candidate (candidate_id)
+        ) ENGINE=InnoDB"
+    );
+    exec_stmt(
+        $db,
+        "CREATE TABLE IF NOT EXISTS candidate_sessions (
+          id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          candidate_account_id INT UNSIGNED NOT NULL,
+          token_hash CHAR(64) NOT NULL UNIQUE,
+          expires_at DATETIME NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT fk_candidate_sessions_account FOREIGN KEY (candidate_account_id) REFERENCES candidate_accounts(id) ON DELETE CASCADE,
+          INDEX idx_candidate_sessions_account (candidate_account_id),
+          INDEX idx_candidate_sessions_expires (expires_at)
+        ) ENGINE=InnoDB"
+    );
+    exec_stmt(
+        $db,
+        "CREATE TABLE IF NOT EXISTS application_documents (
+          id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          application_id INT UNSIGNED NOT NULL,
+          original_file_name VARCHAR(255) NOT NULL,
+          stored_file_path VARCHAR(500) NOT NULL,
+          file_mime_type VARCHAR(120) NOT NULL DEFAULT 'application/pdf',
+          file_size_bytes INT UNSIGNED NOT NULL,
+          uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT fk_application_documents_application FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE,
+          INDEX idx_application_documents_application (application_id)
+        ) ENGINE=InnoDB"
+    );
+    exec_stmt($db, "ALTER TABLE applications MODIFY application_status ENUM('new', 'reviewed', 'shortlisted', 'interview', 'interviewed', 'rejected', 'filtered_out', 'withdrawn') NOT NULL DEFAULT 'new'");
+    exec_stmt($db, "ALTER TABLE application_submission_history MODIFY previous_application_status ENUM('new', 'reviewed', 'shortlisted', 'interview', 'interviewed', 'rejected', 'filtered_out', 'withdrawn') NOT NULL");
+}
+
+function candidate_public_status(string $status): string
+{
+    return match ($status) {
+        "new" => "Submitted",
+        "reviewed" => "Under Review",
+        "shortlisted" => "Shortlisted",
+        "interview", "interviewed" => "Interview",
+        "withdrawn" => "Withdrawn",
+        "rejected", "filtered_out" => "Rejected",
+        default => "Submitted",
+    };
+}
+
+function get_bearer_token(): string
+{
+    $header = (string) ($_SERVER["HTTP_AUTHORIZATION"] ?? "");
+    if ($header === "" && function_exists("getallheaders")) {
+        $headers = getallheaders();
+        $header = (string) ($headers["Authorization"] ?? $headers["authorization"] ?? "");
+    }
+
+    if (preg_match('/Bearer\s+(.+)/i', $header, $matches)) {
+        return trim($matches[1]);
+    }
+
+    return "";
+}
+
+function create_candidate_session(mysqli $db, int $accountId): string
+{
+    $token = bin2hex(random_bytes(32));
+    $tokenHash = hash("sha256", $token);
+    exec_stmt(
+        $db,
+        "INSERT INTO candidate_sessions (candidate_account_id, token_hash, expires_at)
+         VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))",
+        "is",
+        [$accountId, $tokenHash]
+    );
+    return $token;
+}
+
+function candidate_session(mysqli $db): array
+{
+    ensure_candidate_portal_schema($db);
+    $token = get_bearer_token();
+    if ($token === "") {
+        respond(["error" => "Candidate login is required"], 401);
+    }
+
+    $session = row(
+        $db,
+        "SELECT
+           ca.id AS accountId,
+           ca.email,
+           ca.candidate_id AS candidateId,
+           c.full_name AS fullName,
+           c.phone,
+           c.address,
+           c.education,
+           c.default_resume_file_name AS defaultResumeFileName,
+           c.default_resume_path AS defaultResumePath
+         FROM candidate_sessions cs
+         JOIN candidate_accounts ca ON ca.id = cs.candidate_account_id
+         JOIN candidates c ON c.id = ca.candidate_id
+         WHERE cs.token_hash = ?
+           AND cs.expires_at > NOW()
+           AND ca.status = 'active'
+         LIMIT 1",
+        "s",
+        [hash("sha256", $token)]
+    );
+
+    if (!$session) {
+        respond(["error" => "Candidate session expired or invalid"], 401);
+    }
+
+    return $session;
+}
+
+function optional_candidate_session(mysqli $db): ?array
+{
+    $token = get_bearer_token();
+    if ($token === "") {
+        return null;
+    }
+
+    $session = row(
+        $db,
+        "SELECT
+           ca.id AS accountId,
+           ca.email,
+           ca.candidate_id AS candidateId,
+           c.full_name AS fullName,
+           c.phone,
+           c.address,
+           c.education,
+           c.default_resume_file_name AS defaultResumeFileName,
+           c.default_resume_path AS defaultResumePath
+         FROM candidate_sessions cs
+         JOIN candidate_accounts ca ON ca.id = cs.candidate_account_id
+         JOIN candidates c ON c.id = ca.candidate_id
+         WHERE cs.token_hash = ?
+           AND cs.expires_at > NOW()
+           AND ca.status = 'active'
+         LIMIT 1",
+        "s",
+        [hash("sha256", $token)]
+    );
+
+    return $session ?: null;
+}
+
+function candidate_account_payload(array $session, string $token = ""): array
+{
+    $payload = [
+        "id" => (int) $session["accountId"],
+        "candidateId" => (int) $session["candidateId"],
+        "email" => (string) $session["email"],
+        "fullName" => (string) $session["fullName"],
+        "phone" => (string) ($session["phone"] ?? ""),
+        "address" => (string) ($session["address"] ?? ""),
+        "education" => (string) ($session["education"] ?? ""),
+        "defaultResumeFileName" => $session["defaultResumeFileName"] ?? null,
+        "defaultResumePath" => $session["defaultResumePath"] ?? null,
+    ];
+
+    if ($token !== "") {
+        $payload["token"] = $token;
+    }
+
+    return $payload;
+}
+
+function candidate_register(mysqli $db): void
+{
+    ensure_candidate_portal_schema($db);
+    $data = input_json();
+    $fullName = trim((string) ($data["fullName"] ?? ""));
+    $email = strtolower(trim((string) ($data["email"] ?? "")));
+    $password = (string) ($data["password"] ?? "");
+    $phone = trim((string) ($data["phone"] ?? ""));
+
+    if ($fullName === "" || $email === "" || $password === "") {
+        respond(["error" => "Full name, email, and password are required"], 422);
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        respond(["error" => "Please enter a valid email"], 422);
+    }
+    if (strlen($password) < 6) {
+        respond(["error" => "Password must be at least 6 characters"], 422);
+    }
+    if (row($db, "SELECT id FROM candidate_accounts WHERE email = ? LIMIT 1", "s", [$email])) {
+        respond(["error" => "This email is already registered"], 409);
+    }
+
+    $candidate = row($db, "SELECT id FROM candidates WHERE email = ? LIMIT 1", "s", [$email]);
+    if (!$candidate) {
+        exec_stmt(
+            $db,
+            "INSERT INTO candidates (full_name, email, phone) VALUES (?, ?, ?)",
+            "sss",
+            [$fullName, $email, $phone]
+        );
+        $candidateId = $db->insert_id;
+    } else {
+        $candidateId = (int) $candidate["id"];
+        if (row($db, "SELECT id FROM candidate_accounts WHERE candidate_id = ? LIMIT 1", "i", [$candidateId])) {
+            respond(["error" => "This candidate already has an account"], 409);
+        }
+        exec_stmt($db, "UPDATE candidates SET full_name = ?, phone = IF(? = '', phone, ?) WHERE id = ?", "sssi", [$fullName, $phone, $phone, $candidateId]);
+    }
+
+    exec_stmt(
+        $db,
+        "INSERT INTO candidate_accounts (candidate_id, email, password_hash)
+         VALUES (?, ?, ?)",
+        "iss",
+        [$candidateId, $email, password_hash($password, PASSWORD_DEFAULT)]
+    );
+    $accountId = $db->insert_id;
+    $token = create_candidate_session($db, $accountId);
+    exec_stmt($db, "UPDATE candidate_accounts SET last_login_at = NOW() WHERE id = ?", "i", [$accountId]);
+
+    $session = candidate_session_from_account($db, $accountId);
+    respond(["candidate" => candidate_account_payload($session, $token)], 201);
+}
+
+function candidate_session_from_account(mysqli $db, int $accountId): array
+{
+    $session = row(
+        $db,
+        "SELECT
+           ca.id AS accountId,
+           ca.email,
+           ca.candidate_id AS candidateId,
+           c.full_name AS fullName,
+           c.phone,
+           c.address,
+           c.education,
+           c.default_resume_file_name AS defaultResumeFileName,
+           c.default_resume_path AS defaultResumePath
+         FROM candidate_accounts ca
+         JOIN candidates c ON c.id = ca.candidate_id
+         WHERE ca.id = ?
+         LIMIT 1",
+        "i",
+        [$accountId]
+    );
+    if (!$session) {
+        throw new RuntimeException("Candidate account not found");
+    }
+    return $session;
+}
+
+function candidate_login(mysqli $db): void
+{
+    ensure_candidate_portal_schema($db);
+    $data = input_json();
+    $email = strtolower(trim((string) ($data["email"] ?? "")));
+    $password = (string) ($data["password"] ?? "");
+
+    $account = row($db, "SELECT id, password_hash AS passwordHash FROM candidate_accounts WHERE email = ? AND status = 'active' LIMIT 1", "s", [$email]);
+    if (!$account || !password_verify($password, (string) $account["passwordHash"])) {
+        respond(["error" => "Invalid email or password"], 401);
+    }
+
+    $accountId = (int) $account["id"];
+    $token = create_candidate_session($db, $accountId);
+    exec_stmt($db, "UPDATE candidate_accounts SET last_login_at = NOW() WHERE id = ?", "i", [$accountId]);
+    respond(["candidate" => candidate_account_payload(candidate_session_from_account($db, $accountId), $token)]);
+}
+
+function candidate_logout(mysqli $db): void
+{
+    ensure_candidate_portal_schema($db);
+    $token = get_bearer_token();
+    if ($token !== "") {
+        exec_stmt($db, "DELETE FROM candidate_sessions WHERE token_hash = ?", "s", [hash("sha256", $token)]);
+    }
+    respond(["ok" => true]);
+}
+
+function candidate_me(mysqli $db): void
+{
+    respond(["candidate" => candidate_account_payload(candidate_session($db))]);
+}
+
+function candidate_update_profile(mysqli $db): void
+{
+    $session = candidate_session($db);
+    $data = input_data();
+    $fullName = trim((string) ($data["fullName"] ?? ""));
+    $email = strtolower(trim((string) ($data["email"] ?? "")));
+    $phone = trim((string) ($data["phone"] ?? ""));
+    $address = trim((string) ($data["address"] ?? ""));
+    $education = trim((string) ($data["education"] ?? ""));
+
+    if ($fullName === "" || $email === "") {
+        respond(["error" => "Full name and email are required"], 422);
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        respond(["error" => "Please enter a valid email"], 422);
+    }
+    $duplicate = row($db, "SELECT id FROM candidate_accounts WHERE email = ? AND id <> ? LIMIT 1", "si", [$email, (int) $session["accountId"]]);
+    if ($duplicate) {
+        respond(["error" => "This email is already used by another candidate"], 409);
+    }
+
+    [$resumeName, $resumePath] = save_candidate_default_resume($session);
+
+    exec_stmt(
+        $db,
+        "UPDATE candidates
+         SET full_name = ?, email = ?, phone = ?, address = ?, education = ?,
+             default_resume_file_name = COALESCE(?, default_resume_file_name),
+             default_resume_path = COALESCE(?, default_resume_path)
+         WHERE id = ?",
+        "sssssssi",
+        [$fullName, $email, $phone, $address, $education, $resumeName, $resumePath, (int) $session["candidateId"]]
+    );
+    exec_stmt($db, "UPDATE candidate_accounts SET email = ? WHERE id = ?", "si", [$email, (int) $session["accountId"]]);
+    respond(["candidate" => candidate_account_payload(candidate_session_from_account($db, (int) $session["accountId"]))]);
+}
+
+function save_candidate_default_resume(array $session): array
+{
+    if (!isset($_FILES["defaultResume"]) || !is_array($_FILES["defaultResume"]) || (int) ($_FILES["defaultResume"]["error"] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return [null, null];
+    }
+
+    $file = $_FILES["defaultResume"];
+    if ((int) $file["error"] !== UPLOAD_ERR_OK) {
+        respond(["error" => "Default resume upload failed"], 422);
+    }
+    $originalName = basename((string) $file["name"]);
+    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    if (!in_array($extension, ["pdf", "jpg", "jpeg", "png"], true)) {
+        respond(["error" => "Default resume must be PDF, JPG, JPEG, or PNG"], 422);
+    }
+
+    $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . "uploads" . DIRECTORY_SEPARATOR . "candidate-defaults";
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true)) {
+        respond(["error" => "Unable to prepare candidate upload folder"], 500);
+    }
+    $storedName = sprintf("candidate-%d-%s.%s", (int) $session["candidateId"], bin2hex(random_bytes(6)), $extension === "jpeg" ? "jpg" : $extension);
+    if (!move_uploaded_file((string) $file["tmp_name"], $uploadDir . DIRECTORY_SEPARATOR . $storedName)) {
+        respond(["error" => "Unable to save default resume"], 500);
+    }
+
+    $scheme = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off") ? "https" : "http";
+    $host = (string) ($_SERVER["HTTP_HOST"] ?? "localhost");
+    $basePath = rtrim(str_replace("\\", "/", dirname((string) ($_SERVER["SCRIPT_NAME"] ?? "/uwc-hr-api/api.php"))), "/");
+    return [$originalName, "{$scheme}://{$host}{$basePath}/uploads/candidate-defaults/{$storedName}"];
+}
+
+function candidate_update_password(mysqli $db): void
+{
+    $session = candidate_session($db);
+    $data = input_json();
+    $currentPassword = (string) ($data["currentPassword"] ?? "");
+    $newPassword = (string) ($data["newPassword"] ?? "");
+    if (strlen($newPassword) < 6) {
+        respond(["error" => "New password must be at least 6 characters"], 422);
+    }
+
+    $account = row($db, "SELECT password_hash AS passwordHash FROM candidate_accounts WHERE id = ? LIMIT 1", "i", [(int) $session["accountId"]]);
+    if (!$account || !password_verify($currentPassword, (string) $account["passwordHash"])) {
+        respond(["error" => "Current password is incorrect"], 422);
+    }
+
+    exec_stmt($db, "UPDATE candidate_accounts SET password_hash = ? WHERE id = ?", "si", [password_hash($newPassword, PASSWORD_DEFAULT), (int) $session["accountId"]]);
+    respond(["ok" => true]);
+}
+
+function career_jobs(mysqli $db): void
+{
+    $jobs = rows(
+        $db,
+        "SELECT
+           j.id,
+           j.job_code AS jobCode,
+           j.title,
+           j.department,
+           j.location,
+           j.salary_range AS salaryRange,
+           j.employment_type AS employmentType,
+           j.description,
+           j.published_at AS publishedAt,
+           j.closed_at AS closingDate,
+           j.created_at AS createdAt
+         FROM jobs j
+         WHERE j.status = 'active'
+         ORDER BY COALESCE(j.published_at, j.created_at) DESC, j.id DESC"
+    );
+    respond(["jobs" => $jobs]);
+}
+
+function career_job_details(mysqli $db, string $jobCode): void
+{
+    $job = row(
+        $db,
+        "SELECT
+           j.id,
+           j.job_code AS jobCode,
+           j.title,
+           j.department,
+           j.location,
+           j.salary_range AS salaryRange,
+           j.employment_type AS employmentType,
+           j.description,
+           j.required_qualification AS requiredQualification,
+           j.required_experience AS requiredExperience,
+           j.published_at AS publishedAt,
+           j.closed_at AS closingDate,
+           j.created_at AS createdAt
+         FROM jobs j
+         WHERE j.job_code = ?
+           AND j.status = 'active'
+         LIMIT 1",
+        "s",
+        [$jobCode]
+    );
+    if (!$job) {
+        respond(["error" => "Job opening not found"], 404);
+    }
+    $job["responsibilities"] = rows($db, "SELECT responsibility FROM job_responsibilities WHERE job_id = ? ORDER BY sort_order", "i", [(int) $job["id"]]);
+    $job["skills"] = rows($db, "SELECT skill_name AS skillName, skill_type AS skillType, importance FROM job_required_skills WHERE job_id = ? ORDER BY FIELD(importance, 'required', 'preferred'), skill_name", "i", [(int) $job["id"]]);
+    respond(["job" => $job]);
+}
+
+function candidate_applications(mysqli $db): void
+{
+    $session = candidate_session($db);
+    $status = trim((string) ($_GET["status"] ?? "all"));
+    $applications = rows(
+        $db,
+        "SELECT
+           a.id,
+           j.title AS jobTitle,
+           j.department,
+           a.application_status AS internalStatus,
+           a.submitted_at AS submittedDate,
+           a.updated_at AS updatedDate
+         FROM applications a
+         JOIN jobs j ON j.id = a.job_id
+         WHERE a.candidate_id = ?
+         ORDER BY a.submitted_at DESC, a.id DESC",
+        "i",
+        [(int) $session["candidateId"]]
+    );
+    $items = array_map(function (array $application): array {
+        $application["status"] = candidate_public_status((string) $application["internalStatus"]);
+        unset($application["internalStatus"]);
+        return $application;
+    }, $applications);
+    if ($status !== "all") {
+        $items = array_values(array_filter($items, fn (array $item): bool => strtolower((string) $item["status"]) === strtolower($status)));
+    }
+    respond(["applications" => $items]);
+}
+
+function candidate_application_details(mysqli $db, int $applicationId): void
+{
+    $session = candidate_session($db);
+    $application = row(
+        $db,
+        "SELECT
+           a.id,
+           a.application_status AS internalStatus,
+           a.submitted_at AS submittedDate,
+           a.updated_at AS updatedDate,
+           a.interview_sent_at AS interviewSentAt,
+           c.full_name AS fullName,
+           c.email,
+           c.phone,
+           c.current_cgpa AS currentCgpa,
+           c.notice_period_days AS noticePeriodDays,
+           c.address,
+           c.education,
+           j.title AS jobTitle,
+           j.department,
+           j.location,
+           j.employment_type AS employmentType
+         FROM applications a
+         JOIN candidates c ON c.id = a.candidate_id
+         JOIN jobs j ON j.id = a.job_id
+         WHERE a.id = ?
+           AND a.candidate_id = ?
+         LIMIT 1",
+        "ii",
+        [$applicationId, (int) $session["candidateId"]]
+    );
+    if (!$application) {
+        respond(["error" => "Application not found"], 404);
+    }
+    $application["status"] = candidate_public_status((string) $application["internalStatus"]);
+    unset($application["internalStatus"]);
+    $application["documents"] = rows(
+        $db,
+        "SELECT id, original_file_name AS fileName, stored_file_path AS fileUrl, file_mime_type AS mimeType, file_size_bytes AS fileSize, uploaded_at AS uploadedAt
+         FROM application_documents
+         WHERE application_id = ?
+         ORDER BY uploaded_at DESC, id DESC",
+        "i",
+        [$applicationId]
+    );
+    if (count($application["documents"]) === 0) {
+        $application["documents"] = rows(
+            $db,
+            "SELECT id, original_file_name AS fileName, stored_file_path AS fileUrl, file_mime_type AS mimeType, file_size_bytes AS fileSize, uploaded_at AS uploadedAt
+             FROM resumes
+             WHERE application_id = ?
+             ORDER BY uploaded_at DESC, id DESC",
+            "i",
+            [$applicationId]
+        );
+    }
+    $application["interview"] = row(
+        $db,
+        "SELECT scheduled_interview_at AS scheduledAt, sent_at AS sentAt, subject
+         FROM email_logs
+         WHERE application_id = ?
+           AND email_type = 'interview'
+           AND status = 'sent'
+         ORDER BY sent_at DESC, id DESC
+         LIMIT 1",
+        "i",
+        [$applicationId]
+    );
+    respond(["application" => $application]);
+}
+
+function candidate_withdraw_application(mysqli $db, int $applicationId): void
+{
+    $session = candidate_session($db);
+    $application = row(
+        $db,
+        "SELECT application_status AS status
+         FROM applications
+         WHERE id = ?
+           AND candidate_id = ?
+         LIMIT 1",
+        "ii",
+        [$applicationId, (int) $session["candidateId"]]
+    );
+    if (!$application) {
+        respond(["error" => "Application not found"], 404);
+    }
+    if (in_array((string) $application["status"], ["interview", "interviewed", "rejected", "withdrawn"], true)) {
+        respond(["error" => "This application can no longer be withdrawn"], 422);
+    }
+    exec_stmt($db, "UPDATE applications SET application_status = 'withdrawn', is_shortlisted = 0, updated_at = NOW() WHERE id = ?", "i", [$applicationId]);
+    respond(["ok" => true]);
 }
 
 function jobs_query(): string
@@ -561,7 +1160,7 @@ function update_application(mysqli $db, int $applicationId): void
     $emailAction = filter_var($data["emailAction"] ?? false, FILTER_VALIDATE_BOOLEAN);
     $reasonType = trim((string) ($data["reasonType"] ?? ""));
     $reasonDetails = trim((string) ($data["reasonDetails"] ?? ""));
-    $allowed = ["new", "reviewed", "shortlisted", "interview", "interviewed", "rejected", "filtered_out"];
+    $allowed = ["new", "reviewed", "shortlisted", "interview", "interviewed", "rejected", "filtered_out", "withdrawn"];
 
     if (!in_array($status, $allowed, true)) {
         respond(["error" => "Invalid application status"], 422);
@@ -768,6 +1367,7 @@ function apply_job(mysqli $db, string $jobCode): void
 
 function submit_application(mysqli $db, string $jobCode): void
 {
+    ensure_candidate_portal_schema($db);
     $data = input_data();
     $job = row($db, "SELECT id FROM jobs WHERE job_code = ? AND status = 'active'", "s", [$jobCode]);
     if (!$job) {
@@ -782,6 +1382,11 @@ function submit_application(mysqli $db, string $jobCode): void
 
     if ($fullName === "" || $email === "" || $phone === "") {
         respond(["error" => "Full name, email, and phone are required"], 422);
+    }
+
+    $candidateSession = optional_candidate_session($db);
+    if ($candidateSession && strtolower($email) !== strtolower((string) $candidateSession["email"])) {
+        respond(["error" => "Logged-in candidates can only apply using their own account email"], 403);
     }
 
     $candidate = row($db, "SELECT id FROM candidates WHERE email = ?", "s", [$email]);
@@ -837,6 +1442,9 @@ function submit_application(mysqli $db, string $jobCode): void
     );
 
     $candidate = row($db, "SELECT id FROM candidates WHERE email = ?", "s", [$email]);
+    if ($candidateSession && (int) $candidate["id"] !== (int) $candidateSession["candidateId"]) {
+        respond(["error" => "Application email does not match the signed-in candidate"], 403);
+    }
 
     exec_stmt(
         $db,
@@ -931,6 +1539,12 @@ function replace_existing_application(
         exec_stmt(
             $db,
             "DELETE FROM resumes WHERE application_id = ?",
+            "i",
+            [$applicationId]
+        );
+        exec_stmt(
+            $db,
+            "DELETE FROM application_documents WHERE application_id = ?",
             "i",
             [$applicationId]
         );
@@ -1566,6 +2180,13 @@ function save_uploaded_documents(mysqli $db, int $applicationId, string $fallbac
             "is",
             [$applicationId, $fallbackName]
         );
+        exec_stmt(
+            $db,
+            "INSERT INTO application_documents (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes)
+             VALUES (?, ?, '/uploads/resumes/pending.pdf', 'application/pdf', 0)",
+            "is",
+            [$applicationId, $fallbackName]
+        );
         return;
     }
 
@@ -1622,6 +2243,13 @@ function save_uploaded_documents(mysqli $db, int $applicationId, string $fallbac
             $db,
             "INSERT INTO resumes (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes, parsing_status)
              VALUES (?, ?, ?, ?, ?, 'pending')",
+            "isssi",
+            [$applicationId, $originalName, "{$scheme}://{$host}{$basePath}/uploads/resumes/{$storedName}", $mimeType, $size]
+        );
+        exec_stmt(
+            $db,
+            "INSERT INTO application_documents (application_id, original_file_name, stored_file_path, file_mime_type, file_size_bytes)
+             VALUES (?, ?, ?, ?, ?)",
             "isssi",
             [$applicationId, $originalName, "{$scheme}://{$host}{$basePath}/uploads/resumes/{$storedName}", $mimeType, $size]
         );

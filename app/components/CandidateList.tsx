@@ -70,7 +70,8 @@ type CandidateStatus =
   | "interview"
   | "interviewed"
   | "filtered_out"
-  | "rejected";
+  | "rejected"
+  | "withdrawn";
 
 interface ScoreBreakdownItem {
   id: string;
@@ -756,6 +757,7 @@ export function CandidateList() {
       const rankA =
         a.status === "filtered_out" ||
         a.status === "rejected" ||
+        a.status === "withdrawn" ||
         a.rank === null
           ? Number.MAX_SAFE_INTEGER
           : a.rank;
@@ -763,6 +765,7 @@ export function CandidateList() {
       const rankB =
         b.status === "filtered_out" ||
         b.status === "rejected" ||
+        b.status === "withdrawn" ||
         b.rank === null
           ? Number.MAX_SAFE_INTEGER
           : b.rank;
@@ -799,6 +802,8 @@ export function CandidateList() {
         return "bg-red-600";
       case "filtered_out":
         return "bg-slate-500";
+      case "withdrawn":
+        return "bg-slate-400";
       default:
         return "bg-slate-600";
     }
@@ -810,6 +815,8 @@ export function CandidateList() {
         return "FILTERED OUT";
       case "interviewed":
         return "INTERVIEWED";
+      case "withdrawn":
+        return "WITHDRAWN";
       default:
         return status.replace(/_/g, " ").toUpperCase();
     }
@@ -985,7 +992,7 @@ export function CandidateList() {
   };
 
   const handleToggleShortlist = (candidate: Candidate) => {
-    if (candidate.status === "rejected") return;
+    if (candidate.status === "rejected" || candidate.status === "withdrawn") return;
 
     const newStatus: CandidateStatus =
       candidate.isShortlisted
@@ -1401,6 +1408,9 @@ export function CandidateList() {
                   <SelectItem value="rejected">
                     Rejected
                   </SelectItem>
+                  <SelectItem value="withdrawn">
+                    Withdrawn
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1570,7 +1580,8 @@ export function CandidateList() {
                             </h3>
 
                             {candidate.status !==
-                              "rejected" && (
+                              "rejected" &&
+                              candidate.status !== "withdrawn" && (
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1605,7 +1616,8 @@ export function CandidateList() {
                           </Badge>
                           {isShortlisted &&
                             candidate.status !== "shortlisted" &&
-                            candidate.status !== "rejected" && (
+                            candidate.status !== "rejected" &&
+                            candidate.status !== "withdrawn" && (
                               <Badge className="bg-amber-500">
                                 SHORTLISTED
                               </Badge>
@@ -1662,6 +1674,7 @@ export function CandidateList() {
                             {candidate.status ===
                               "filtered_out" ||
                             candidate.status === "rejected" ||
+                            candidate.status === "withdrawn" ||
                             candidate.rank === null
                               ? "-"
                               : `#${candidate.rank}`}
@@ -1669,6 +1682,7 @@ export function CandidateList() {
                           {candidate.status !==
                             "filtered_out" &&
                             candidate.status !== "rejected" &&
+                            candidate.status !== "withdrawn" &&
                             candidate.rank !== null &&
                             candidate.rank <= 3 && (
                               <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
@@ -2052,7 +2066,7 @@ export function CandidateList() {
                     </div>
 
                     <div className="flex gap-2">
-                      {candidate.status !== "rejected" && (
+                      {candidate.status !== "rejected" && candidate.status !== "withdrawn" && (
                         <>
                           <Button
                             className={`text-white shadow-sm px-5 ${

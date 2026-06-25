@@ -14,6 +14,15 @@ import { HRManagement } from "./components/HRManagement";
 import { DepartmentJobs } from "./components/DepartmentJobs";
 import { JobManagement } from "./components/JobManagement";
 import { ApplicationList } from "./components/ApplicationList";
+import {
+  CareersHome,
+  CareerJobDetailsPage,
+  CandidateApplicationDetailsPage,
+  CandidateApplicationsPage,
+  CandidateLogin,
+  CandidateProfilePage,
+  CandidateRegister,
+} from "./components/CandidatePortal";
 import { NotFound } from "./components/NotFound";
 import { canManageUsers, getStoredUser } from "./lib/api";
 
@@ -58,6 +67,34 @@ export const router = createBrowserRouter([
       {
         path: "login",
         Component: Login,
+      },
+      {
+        path: "careers",
+        Component: CareersHome,
+      },
+      {
+        path: "careers/:jobCode",
+        Component: CareerJobDetailsPage,
+      },
+      {
+        path: "candidate/login",
+        Component: CandidateLogin,
+      },
+      {
+        path: "candidate/register",
+        Component: CandidateRegister,
+      },
+      {
+        path: "candidate/applications",
+        Component: CandidateApplicationsPage,
+      },
+      {
+        path: "candidate/applications/:applicationId",
+        Component: CandidateApplicationDetailsPage,
+      },
+      {
+        path: "candidate/profile",
+        Component: CandidateProfilePage,
       },
       {
         path: "dashboard",

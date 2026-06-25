@@ -1,6 +1,6 @@
 import image_a7e321551d78150f830b1e4870452ab5d2dd7d7e from "../assets/uwc-berhad-logo.png";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -27,12 +27,13 @@ import {
   X,
   Check,
   Briefcase,
+  ChevronRight,
   MapPin,
   Building2,
   Eye,
   DollarSign,
 } from "lucide-react";
-import { ApiError, apiFetch, type JobSummary } from "../lib/api";
+import { ApiError, apiFetch, getStoredCandidate, type JobSummary } from "../lib/api";
 import { LoadingState } from "./LoadingState";
 
 type JobItem = {
@@ -78,6 +79,8 @@ function canPreview(file: File) {
 
 export function ApplyJob() {
   const { jobCode } = useParams();
+  const navigate = useNavigate();
+  const [signedInCandidate] = useState(() => getStoredCandidate());
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [formData, setFormData] = useState({
@@ -106,6 +109,17 @@ export function ApplyJob() {
       jobs.find((job) => job.id === formData.selectedJobId),
     [jobs, formData.selectedJobId],
   );
+
+  useEffect(() => {
+    if (!signedInCandidate) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      fullName: prev.fullName || signedInCandidate.fullName || "",
+      email: prev.email || signedInCandidate.email || "",
+      phone: prev.phone || signedInCandidate.phone || "",
+    }));
+  }, [signedInCandidate]);
 
   useEffect(() => {
     setIsLoadingJobs(true);
@@ -371,10 +385,80 @@ export function ApplyJob() {
     }
   };
 
+  function CandidateApplicationBreadcrumb() {
+    const items = [
+      { label: "Careers", href: "/careers" },
+      { label: selectedJob?.department || "Job" },
+      { label: selectedJob?.title || "Application" },
+      { label: "Apply" },
+    ];
+
+    return (
+      <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm text-[#496a94]" aria-label="Breadcrumb">
+        {items.map((item, index) => {
+          const isLast = index === items.length - 1;
+
+          return (
+            <div key={`${item.label}-${index}`} className="flex items-center gap-2">
+              {index > 0 && <ChevronRight className="h-4 w-4 text-[#8aa0bd]" />}
+              {item.href && !isLast ? (
+                <Link to={item.href} className="transition hover:text-[#003B7A]">
+                  {item.label}
+                </Link>
+              ) : (
+                <span className={isLast ? "font-semibold text-slate-950" : ""}>{item.label}</span>
+              )}
+            </div>
+          );
+        })}
+      </nav>
+    );
+  }
+
+  function CandidateApplicationHeader() {
+    return (
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 lg:px-8">
+          <Link to="/careers" className="flex items-center gap-3">
+            <img
+              src={image_a7e321551d78150f830b1e4870452ab5d2dd7d7e}
+              alt="UWC Logo"
+              className="h-8 w-auto"
+            />
+            <div>
+              <p className="font-semibold text-slate-950">UWC Careers</p>
+              <p className="text-xs text-slate-500">Candidate Portal</p>
+            </div>
+          </Link>
+
+          <nav className="flex items-center gap-2 text-sm">
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/careers">Careers</Link>
+            </Button>
+            {signedInCandidate ? (
+              <>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/candidate/applications">My Applications</Link>
+                </Button>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/candidate/profile">Profile</Link>
+                </Button>
+              </>
+            ) : (
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/candidate/login">Login</Link>
+              </Button>
+            )}
+          </nav>
+        </div>
+      </header>
+    );
+  }
+
   function CandidateFooter() {
     return (
       <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto max-w-6xl px-6 py-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-6 py-6 lg:px-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
               <img
@@ -406,30 +490,10 @@ export function ApplyJob() {
 
   if (isSubmitted) {
     return (
-      <div className="flex min-h-screen flex-col bg-slate-50">
-        <header className="border-b border-slate-200 bg-white">
-          <div className="mx-auto flex h-16 max-w-6xl items-center px-6 lg:px-8">
-            <div className="flex items-center gap-3">
-              <img
-                src={
-                  image_a7e321551d78150f830b1e4870452ab5d2dd7d7e
-                }
-                alt="UWC Logo"
-                className="h-8 w-auto"
-              />
-              <div>
-                <p className="text-sm font-semibold text-slate-900">
-                  Job Application
-                </p>
-                <p className="text-xs text-slate-500">
-                  UWC Berhad Recruitment
-                </p>
-              </div>
-            </div>
-          </div>
-        </header>
+      <div className="flex min-h-screen flex-col bg-slate-100">
+        <CandidateApplicationHeader />
 
-        <main className="mx-auto flex w-full max-w-4xl flex-1 items-center px-6 py-10 lg:px-8">
+        <main className="mx-auto flex w-full max-w-7xl flex-1 items-center px-6 py-10 lg:px-8">
           <Card className="mx-auto max-w-2xl rounded-2xl border-slate-200 shadow-sm">
             <CardContent className="pt-12 pb-12 text-center">
               <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
@@ -456,10 +520,14 @@ export function ApplyJob() {
               </div>
 
               <Button
-                onClick={() => setIsSubmitted(false)}
+                onClick={() =>
+                  signedInCandidate
+                    ? navigate("/candidate/applications")
+                    : setIsSubmitted(false)
+                }
                 className="bg-[#003B7A] hover:bg-[#002f63] text-white shadow-sm px-5"
               >
-                Back to Form
+                {signedInCandidate ? "View My Applications" : "Back to Form"}
               </Button>
             </CardContent>
           </Card>
@@ -471,30 +539,11 @@ export function ApplyJob() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-16 max-w-6xl items-center px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <img
-              src={
-                image_a7e321551d78150f830b1e4870452ab5d2dd7d7e
-              }
-              alt="UWC Logo"
-              className="h-8 w-auto"
-            />
-            <div>
-              <p className="text-sm font-semibold text-slate-900">
-                Job Application
-              </p>
-              <p className="text-xs text-slate-500">
-                UWC Berhad Recruitment
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-slate-100">
+      <CandidateApplicationHeader />
 
-      <main className="mx-auto max-w-6xl px-6 py-5 lg:px-8">
+      <main className="mx-auto max-w-7xl px-6 py-5 lg:px-8">
+        <CandidateApplicationBreadcrumb />
         <div className="mb-8 text-center md:text-left">
           <h1 className="mb-2 text-3xl font-bold text-slate-900">
             Job Application
@@ -617,6 +666,7 @@ export function ApplyJob() {
                       type="email"
                       placeholder="john.doe@email.com"
                       value={formData.email}
+                      disabled={Boolean(signedInCandidate)}
                       onChange={(e) =>
                         handleInputChange(
                           "email",

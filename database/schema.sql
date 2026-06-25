@@ -123,6 +123,10 @@ CREATE TABLE IF NOT EXISTS candidates (
   full_name VARCHAR(150) NOT NULL,
   email VARCHAR(180) NOT NULL,
   phone VARCHAR(40) NULL,
+  address VARCHAR(500) NULL,
+  education VARCHAR(500) NULL,
+  default_resume_file_name VARCHAR(255) NULL,
+  default_resume_path VARCHAR(500) NULL,
   current_cgpa DECIMAL(3,2) NULL,
   years_experience DECIMAL(4,1) NULL,
   notice_period_days INT UNSIGNED NULL,
@@ -132,13 +136,37 @@ CREATE TABLE IF NOT EXISTS candidates (
   UNIQUE KEY uq_candidates_email (email)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS candidate_accounts (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  candidate_id INT UNSIGNED NOT NULL,
+  email VARCHAR(180) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+  last_login_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_candidate_accounts_candidate FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_candidate_accounts_candidate (candidate_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS candidate_sessions (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  candidate_account_id INT UNSIGNED NOT NULL,
+  token_hash CHAR(64) NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_candidate_sessions_account FOREIGN KEY (candidate_account_id) REFERENCES candidate_accounts(id) ON DELETE CASCADE,
+  INDEX idx_candidate_sessions_account (candidate_account_id),
+  INDEX idx_candidate_sessions_expires (expires_at)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS applications (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   job_id INT UNSIGNED NOT NULL,
   candidate_id INT UNSIGNED NOT NULL,
   application_link_id INT UNSIGNED NULL,
   assigned_hr_user_id INT UNSIGNED NULL,
-  application_status ENUM('new', 'reviewed', 'shortlisted', 'interview', 'interviewed', 'rejected', 'filtered_out') NOT NULL DEFAULT 'new',
+  application_status ENUM('new', 'reviewed', 'shortlisted', 'interview', 'interviewed', 'rejected', 'filtered_out', 'withdrawn') NOT NULL DEFAULT 'new',
   is_shortlisted TINYINT(1) NOT NULL DEFAULT 0,
   interview_sent_at DATETIME NULL,
   eligibility_status ENUM('eligible', 'filtered_out', 'pending') NOT NULL DEFAULT 'pending',
@@ -170,6 +198,18 @@ CREATE TABLE IF NOT EXISTS resumes (
   uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_resumes_application FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE,
   INDEX idx_resumes_application (application_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS application_documents (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  application_id INT UNSIGNED NOT NULL,
+  original_file_name VARCHAR(255) NOT NULL,
+  stored_file_path VARCHAR(500) NOT NULL,
+  file_mime_type VARCHAR(120) NOT NULL DEFAULT 'application/pdf',
+  file_size_bytes INT UNSIGNED NOT NULL,
+  uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_application_documents_application FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE,
+  INDEX idx_application_documents_application (application_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS score_breakdowns (

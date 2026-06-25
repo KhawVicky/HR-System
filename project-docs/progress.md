@@ -132,3 +132,10 @@
 - Recent Processing Details also shows a follow-up `Interviewed` badge under `Interview Email Sent` when HR later marks the interview as completed, without changing the locked processing time.
 - Recent Processing Details follow-up rejection badges now match normal rejection wording: `Rejection Email Sent` when a later rejection email was sent, and `Rejected` when HR rejected without sending email.
 - Moved candidate rejection Reason details to the top of the expanded candidate card and changed the Reason label into a section title outside the card, matching the Recruitment Handling section style.
+- Added the Candidate Career Portal foundation. New public routes support active job browsing, job details, candidate registration/login/logout, profile management, candidate-only application listing/details, and withdraw-before-interview flow.
+- Added candidate portal database support through `candidate_accounts`, `candidate_sessions`, `application_documents`, candidate profile fields, and the new `withdrawn` application status. A migration file was added at `database/migrations/2026-06-25-candidate-career-portal.sql`.
+- Integrated the existing `/apply` form with candidate sessions. Logged-in candidates now submit under their own account identity, their email is locked on the form, and successful submissions can route back to My Applications.
+- Added candidate-facing status mapping so applicants see `Submitted`, `Under Review`, `Shortlisted`, `Interview`, `Rejected`, or `Withdrawn` without exposing internal `filtered_out`, ranking, score, eligibility reason, or HR notes.
+- Updated HR-facing candidate/application/status UI to recognize `withdrawn` applications after a candidate withdraws.
+- Synced the updated PHP API to `C:\xampp\htdocs\uwc-hr-api\api.php` so the local XAMPP endpoint exposes the new candidate portal routes.
+- Added HR-style breadcrumbs across the Candidate Career Portal pages, including Careers, Job Details, Candidate Login/Register, My Applications, Application Details, and Profile.

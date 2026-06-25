@@ -65,6 +65,19 @@ export interface NotificationResponse {
   unreadCount: number;
 }
 
+export interface CandidateAccount {
+  id: number;
+  candidateId: number;
+  email: string;
+  fullName: string;
+  phone: string;
+  address: string;
+  education: string;
+  defaultResumeFileName?: string | null;
+  defaultResumePath?: string | null;
+  token?: string;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -73,9 +86,11 @@ export async function apiFetch<T>(
   const route = routePath;
   const query = queryString ? `&${queryString}` : "";
   const isFormData = options.body instanceof FormData;
+  const candidateToken = getStoredCandidateToken();
   const response = await fetch(`${API_BASE}?route=${encodeURIComponent(route)}${query}`, {
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...(candidateToken ? { Authorization: `Bearer ${candidateToken}` } : {}),
       ...(options.headers || {}),
     },
     ...options,
@@ -116,4 +131,32 @@ export function canManageUsers(user: AuthUser | null) {
 
 export function canViewHrEfficiency(user: AuthUser | null) {
   return canManageUsers(user);
+}
+
+export function getStoredCandidate(): CandidateAccount | null {
+  const raw = localStorage.getItem("candidate_user_data");
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as CandidateAccount;
+  } catch {
+    return null;
+  }
+}
+
+export function getStoredCandidateToken() {
+  return localStorage.getItem("candidate_session_token") || "";
+}
+
+export function storeCandidate(candidate: CandidateAccount) {
+  if (candidate.token) {
+    localStorage.setItem("candidate_session_token", candidate.token);
+  }
+  const { token, ...safeCandidate } = candidate;
+  localStorage.setItem("candidate_user_data", JSON.stringify(safeCandidate));
+}
+
+export function clearStoredCandidate() {
+  localStorage.removeItem("candidate_session_token");
+  localStorage.removeItem("candidate_user_data");
 }

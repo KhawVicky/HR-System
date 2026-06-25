@@ -60,6 +60,7 @@ export type ProcessingAnalyticsItem = {
     | "interview"
     | "interviewed"
     | "rejected"
+    | "withdrawn"
     | "filtered_out";
   applicationDate: string;
   lastActionDate: string | null;
@@ -70,6 +71,7 @@ export type ProcessingAnalyticsItem = {
     | "interview"
     | "interviewed"
     | "rejected"
+    | "withdrawn"
     | "filtered_out"
     | "interview_email_sent"
     | "rejection_email_sent";

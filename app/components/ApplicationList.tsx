@@ -58,6 +58,7 @@ const statusBadgeClass = (status: string) => {
   if (status === "interview") return "bg-blue-600 text-white";
   if (status === "interviewed") return "bg-sky-700 text-white";
   if (status === "rejected") return "bg-red-600 text-white";
+  if (status === "withdrawn") return "bg-slate-500 text-white";
   return "bg-slate-500 text-white";
 };
 
