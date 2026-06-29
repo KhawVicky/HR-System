@@ -33,8 +33,9 @@ import {
   Eye,
   DollarSign,
 } from "lucide-react";
-import { ApiError, apiFetch, getStoredCandidate, type JobSummary } from "../lib/api";
+import { ApiError, apiFetch, getStoredCandidate, type CandidateAccount, type JobSummary } from "../lib/api";
 import { LoadingState } from "./LoadingState";
+import { CandidateAuthModal } from "./CandidatePortal";
 
 type JobItem = {
   id: string;
@@ -80,9 +81,10 @@ function canPreview(file: File) {
 export function ApplyJob() {
   const { jobCode } = useParams();
   const navigate = useNavigate();
-  const [signedInCandidate] = useState(() => getStoredCandidate());
+  const [signedInCandidate, setSignedInCandidate] = useState<CandidateAccount | null>(() => getStoredCandidate());
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     selectedJobId: "",
     fullName: "",
@@ -388,8 +390,10 @@ export function ApplyJob() {
   function CandidateApplicationBreadcrumb() {
     const items = [
       { label: "Careers", href: "/careers" },
-      { label: selectedJob?.department || "Job" },
-      { label: selectedJob?.title || "Application" },
+      {
+        label: selectedJob?.title || "Application",
+        href: selectedJob?.id ? `/careers/${selectedJob.id}` : undefined,
+      },
       { label: "Apply" },
     ];
 
@@ -445,8 +449,8 @@ export function ApplyJob() {
                 </Button>
               </>
             ) : (
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/candidate/login">Login</Link>
+              <Button variant="ghost" size="sm" onClick={() => setAuthModalOpen(true)}>
+                Login
               </Button>
             )}
           </nav>
@@ -963,6 +967,17 @@ export function ApplyJob() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CandidateAuthModal
+        open={authModalOpen}
+        returnTo={jobCode ? `/apply/${jobCode}` : "/apply"}
+        onOpenChange={(open) => {
+          setAuthModalOpen(open);
+          if (!open) {
+            setSignedInCandidate(getStoredCandidate());
+          }
+        }}
+      />
 
       <CandidateFooter />
     </div>

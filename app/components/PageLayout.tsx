@@ -90,10 +90,18 @@ export function PageLayout({
                   onClick={() => navigate("/profile")}
                   className="flex items-center gap-2"
                 >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-sm font-bold">
-                    {user?.name?.charAt(0).toUpperCase() ||
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-sm font-bold overflow-hidden">
+                    {user?.avatarPath ? (
+                      <img
+                        src={user.avatarPath}
+                        alt="Profile"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      user?.name?.charAt(0).toUpperCase() ||
                       localStorage.getItem("hr_user")?.charAt(0).toUpperCase() ||
-                      "H"}
+                      "H"
+                    )}
                   </div>
                   <span className="text-sm text-slate-600">
                     {user?.name || localStorage.getItem("hr_user")}

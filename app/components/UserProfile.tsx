@@ -42,26 +42,38 @@ import {
   Lock,
   Pencil,
   FileText,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
-import { apiFetch } from "../lib/api";
+import { apiFetch, getStoredUser, type AuthUser } from "../lib/api";
 import { LoadingState } from "./LoadingState";
+import { PasswordInput } from "./PasswordInput";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./ui/collapsible";
 
 export function UserProfile() {
   const navigate = useNavigate();
 
-  // Get user from localStorage
-  const userEmail =
-    localStorage.getItem("hr_user") || "hr@company.com";
+  const storedUser = getStoredUser();
+  const userEmail = storedUser?.email || localStorage.getItem("hr_user") || "";
+  const userName = storedUser?.name || userEmail.split("@")[0] || "HR User";
+  const userRole = storedUser?.roleName || (storedUser?.roleKey === "hiring_manager" ? "Hiring Manager" : "HR Staff");
+  const canEditEmailTemplates =
+    storedUser?.roleId === 2 ||
+    storedUser?.roleKey === "hiring_manager";
 
   // Profile state
   const [profileData, setProfileData] = useState({
-    fullName: "Joseph Tan",
+    fullName: userName,
     email: userEmail,
-    phone: "+60 12-345 6789",
-    department: "Human Resources",
-    jobTitle: "Senior HR Manager",
+    phone: storedUser?.phone || "",
+    department: storedUser?.department || "Human Resources",
+    jobTitle: userRole,
   });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Password state
   const [passwordData, setPasswordData] = useState({
@@ -78,6 +90,7 @@ export function UserProfile() {
     candidateInterviewMessage:
       "Dear {candidateName},\n\nWe would like to invite you for an interview for the {jobTitle} position on {interviewDate}.\n\nPlease complete the attached file and reply to this email before attending the interview.\n\nRegards,\n{companyName}",
     candidateInterviewAttachmentName: "",
+    candidateInterviewLogoAttachmentName: "",
 
     candidateRejectedEnabled: true,
     candidateRejectedSubject: "Update on your job application",
@@ -88,15 +101,54 @@ export function UserProfile() {
     pushInterviewReminder: true,
   });
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
+  const [openInterviewTemplate, setOpenInterviewTemplate] =
+    useState(false);
+  const [openRejectTemplate, setOpenRejectTemplate] =
+    useState(false);
   // Avatar state
   const [avatarPreview, setAvatarPreview] = useState<
     string | null
-  >(null);
+  >(storedUser?.avatarPath || null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
-  const handleProfileUpdate = () => {
-    toast.success("Profile updated successfully!", {
-      description: "Your changes have been saved.",
-    });
+  const handleProfileUpdate = async () => {
+    if (!storedUser?.id) {
+      toast.error("Unable to identify the current user");
+      return false;
+    }
+
+    setIsSavingProfile(true);
+    try {
+      const data = await apiFetch<{ user: AuthUser }>("/auth/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          userId: storedUser.id,
+          fullName: profileData.fullName,
+          department: profileData.department,
+          phone: profileData.phone,
+        }),
+      });
+
+      localStorage.setItem("hr_user", data.user.email);
+      localStorage.setItem("hr_user_data", JSON.stringify(data.user));
+      setProfileData((prev) => ({
+        ...prev,
+        fullName: data.user.name,
+        email: data.user.email,
+        phone: data.user.phone || "",
+        department: data.user.department || "Human Resources",
+        jobTitle: data.user.roleName,
+      }));
+      toast.success("Profile updated successfully!", {
+        description: "Your changes have been saved.",
+      });
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update profile");
+      return false;
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const handlePasswordChange = () => {
@@ -128,31 +180,74 @@ export function UserProfile() {
     });
   };
 
-  const handleAvatarUpload = (
+  const handleAvatarUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith("image/")) {
-        toast.error("Please upload an image file");
-        return;
-      }
+    if (!file) return;
 
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("File size must be less than 5MB");
-        return;
-      }
+    if (!storedUser?.id) {
+      toast.error("Unable to identify the current user");
+      e.target.value = "";
+      return;
+    }
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string);
-        toast.success("Avatar uploaded successfully!");
-      };
-      reader.readAsDataURL(file);
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload an image file");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File size must be less than 5MB");
+      e.target.value = "";
+      return;
+    }
+
+    const localPreview = URL.createObjectURL(file);
+    setAvatarPreview(localPreview);
+
+    const formData = new FormData();
+    formData.append("userId", String(storedUser.id));
+    formData.append("fullName", profileData.fullName);
+    formData.append("department", profileData.department);
+    formData.append("phone", profileData.phone);
+    formData.append("avatar", file);
+
+    setIsUploadingAvatar(true);
+    try {
+      const data = await apiFetch<{ user: AuthUser }>("/auth/profile/avatar", {
+        method: "POST",
+        body: formData,
+      });
+
+      localStorage.setItem("hr_user", data.user.email);
+      localStorage.setItem("hr_user_data", JSON.stringify(data.user));
+      setAvatarPreview(data.user.avatarPath || localPreview);
+      setProfileData((prev) => ({
+        ...prev,
+        fullName: data.user.name,
+        email: data.user.email,
+        phone: data.user.phone || "",
+        department: data.user.department || "Human Resources",
+        jobTitle: data.user.roleName,
+      }));
+      toast.success("Avatar uploaded successfully!");
+    } catch (error) {
+      setAvatarPreview(storedUser.avatarPath || null);
+      toast.error(error instanceof Error ? error.message : "Failed to upload avatar");
+    } finally {
+      setIsUploadingAvatar(false);
+      e.target.value = "";
     }
   };
 
   const handleNotificationUpdate = async () => {
+    if (!canEditEmailTemplates) {
+      toast.error("Only Hiring Manager can edit email templates");
+      return;
+    }
+
     try {
       await apiFetch("/email-templates", {
         method: "POST",
@@ -191,6 +286,7 @@ export function UserProfile() {
           body?: string;
           isActive?: boolean | number | string;
           attachmentFileName?: string | null;
+          logoAttachmentFileName?: string | null;
         };
         reject_application?: {
           subject?: string;
@@ -220,6 +316,9 @@ export function UserProfile() {
           candidateInterviewAttachmentName:
             interview?.attachmentFileName ||
             current.candidateInterviewAttachmentName,
+          candidateInterviewLogoAttachmentName:
+            interview?.logoAttachmentFileName ||
+            current.candidateInterviewLogoAttachmentName,
           candidateRejectedEnabled:
             reject?.isActive === undefined
               ? current.candidateRejectedEnabled
@@ -241,6 +340,12 @@ export function UserProfile() {
   const handleInterviewAttachmentUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
+    if (!canEditEmailTemplates) {
+      toast.error("Only Hiring Manager can edit email templates");
+      e.target.value = "";
+      return;
+    }
+
     const file = e.target.files?.[0];
 
     if (!file) return;
@@ -275,6 +380,53 @@ export function UserProfile() {
         error instanceof Error
           ? error.message
           : "Failed to upload interview attachment",
+      );
+    } finally {
+      e.target.value = "";
+    }
+  };
+
+  const handleInterviewLogoAttachmentUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    if (!canEditEmailTemplates) {
+      toast.error("Only Hiring Manager can edit email templates");
+      e.target.value = "";
+      return;
+    }
+
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Email logo size must be less than 5MB");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("attachment", file);
+
+    try {
+      const response = await apiFetch<{ fileName: string }>(
+        "/email-templates/interview-logo-attachment",
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+
+      setNotifications({
+        ...notifications,
+        candidateInterviewLogoAttachmentName: response.fileName,
+      });
+
+      toast.success("Email logo uploaded successfully!");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to upload email logo",
       );
     } finally {
       e.target.value = "";
@@ -388,10 +540,11 @@ export function UserProfile() {
                       variant="outline"
                       className="h-10 px-5"
                       asChild
+                      disabled={isUploadingAvatar}
                     >
                       <span className="cursor-pointer">
                         <Upload className="w-4 h-4 mr-2" />
-                        Upload New Photo
+                        {isUploadingAvatar ? "Uploading..." : "Upload New Photo"}
                       </span>
                     </Button>
                   </label>
@@ -504,13 +657,16 @@ export function UserProfile() {
                   <div className="flex justify-end pt-2">
                     <Button
                       className="bg-[#003B7A] hover:bg-[#002f63] text-white shadow-sm px-6 h-11"
-                      onClick={() => {
-                        handleProfileUpdate();
-                        setIsEditingProfile(false);
+                      disabled={isSavingProfile}
+                      onClick={async () => {
+                        const saved = await handleProfileUpdate();
+                        if (saved) {
+                          setIsEditingProfile(false);
+                        }
                       }}
                     >
                       <Save className="w-4 h-4 mr-2" />
-                      Save Profile Changes
+                      {isSavingProfile ? "Saving..." : "Save Profile Changes"}
                     </Button>
                   </div>
                 </>
@@ -533,9 +689,8 @@ export function UserProfile() {
                 <Label htmlFor="currentPassword">
                   Current Password
                 </Label>
-                <Input
+                <PasswordInput
                   id="currentPassword"
-                  type="password"
                   value={passwordData.currentPassword}
                   onChange={(e) =>
                     setPasswordData({
@@ -550,9 +705,8 @@ export function UserProfile() {
                 <Label htmlFor="newPassword">
                   New Password
                 </Label>
-                <Input
+                <PasswordInput
                   id="newPassword"
-                  type="password"
                   value={passwordData.newPassword}
                   onChange={(e) =>
                     setPasswordData({
@@ -570,9 +724,8 @@ export function UserProfile() {
                 <Label htmlFor="confirmPassword">
                   Confirm New Password
                 </Label>
-                <Input
+                <PasswordInput
                   id="confirmPassword"
-                  type="password"
                   value={passwordData.confirmPassword}
                   onChange={(e) =>
                     setPasswordData({
@@ -667,6 +820,7 @@ export function UserProfile() {
                   checked={
                     notifications.candidateInterviewEnabled
                   }
+                  disabled={!canEditEmailTemplates}
                   onCheckedChange={(checked) =>
                     setNotifications({
                       ...notifications,
@@ -676,103 +830,201 @@ export function UserProfile() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="candidate-interview-subject">
-                  Subject
-                </Label>
-                <Input
-                  id="candidate-interview-subject"
-                  value={
-                    notifications.candidateInterviewSubject
-                  }
-                  onChange={(e) =>
-                    setNotifications({
-                      ...notifications,
-                      candidateInterviewSubject: e.target.value,
-                    })
-                  }
-                  placeholder="Interview invitation for {jobTitle}"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="candidate-interview-message">
-                  Message
-                </Label>
-                <Textarea
-                  id="candidate-interview-message"
-                  rows={7}
-                  value={
-                    notifications.candidateInterviewMessage
-                  }
-                  onChange={(e) =>
-                    setNotifications({
-                      ...notifications,
-                      candidateInterviewMessage: e.target.value,
-                    })
-                  }
-                  placeholder="Dear {candidateName}, please complete the attached file and reply to this email before the interview on {interviewDate}."
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="candidate-interview-attachment">
-                  Attachment for Candidate
-                </Label>
-
-                <div className="flex items-center gap-3">
-                  <input
-                    id="candidate-interview-attachment"
-                    type="file"
-                    accept=".pdf,.doc,.docx"
-                    className="hidden"
-                    onChange={handleInterviewAttachmentUpload}
-                  />
-
-                  <Button
+              <Collapsible
+                open={openInterviewTemplate}
+                onOpenChange={setOpenInterviewTemplate}
+                className="space-y-4"
+              >
+                <CollapsibleTrigger asChild>
+                  <button
                     type="button"
-                    variant="outline"
-                    className="h-10"
-                    onClick={() =>
-                      document
-                        .getElementById(
-                          "candidate-interview-attachment",
-                        )
-                        ?.click()
-                    }
+                    className="flex w-full items-center justify-between text-left"
                   >
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload File
-                  </Button>
-
-                  {notifications.candidateInterviewAttachmentName ? (
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <FileText className="w-4 h-4 text-[#003B7A]" />
-                      <span>
-                        {
-                          notifications.candidateInterviewAttachmentName
-                        }
-                      </span>
+                    <div>
+                      <p className="font-medium text-slate-900">
+                        Email content and attachments
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        {canEditEmailTemplates
+                          ? "Click to edit the interview email template"
+                          : "Click to view the interview email template"}
+                      </p>
                     </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">
-                      No file uploaded
-                    </p>
-                  )}
-                </div>
+                    <ChevronDown
+                      className={`h-5 w-5 text-slate-500 transition-transform ${
+                        openInterviewTemplate ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                </CollapsibleTrigger>
 
-                <p className="text-xs text-slate-500">
-                  This file will be attached to the interview
-                  email. The candidate can complete it and reply
-                  to the email before the interview.
-                </p>
-              </div>
+                <CollapsibleContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-interview-subject">
+                      Subject
+                    </Label>
+                    <Input
+                      id="candidate-interview-subject"
+                      value={
+                        notifications.candidateInterviewSubject
+                      }
+                      disabled={!canEditEmailTemplates}
+                      onChange={(e) =>
+                        setNotifications({
+                          ...notifications,
+                          candidateInterviewSubject: e.target.value,
+                        })
+                      }
+                      placeholder="Interview invitation for {jobTitle}"
+                    />
+                  </div>
 
-              <p className="text-xs text-slate-500">
-                Available placeholders: {"{candidateName}"},{" "}
-                {"{jobTitle}"}, {"{companyName}"},{" "}
-                {"{interviewDateOptions}"}
-              </p>
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-interview-message">
+                      Message
+                    </Label>
+                    <Textarea
+                      id="candidate-interview-message"
+                      rows={7}
+                      value={
+                        notifications.candidateInterviewMessage
+                      }
+                      disabled={!canEditEmailTemplates}
+                      onChange={(e) =>
+                        setNotifications({
+                          ...notifications,
+                          candidateInterviewMessage: e.target.value,
+                        })
+                      }
+                      placeholder="Dear {candidateName}, please complete the attached file and reply to this email before the interview on {interviewDate}."
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <p className="font-medium text-slate-900">
+                        Email Attachments
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        Manage files included with interview emails.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="candidate-interview-attachment">
+                          Attachment for Candidate
+                        </Label>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                          <input
+                            id="candidate-interview-attachment"
+                            type="file"
+                            accept=".pdf,.doc,.docx"
+                            className="hidden"
+                            onChange={handleInterviewAttachmentUpload}
+                            disabled={!canEditEmailTemplates}
+                          />
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-10"
+                            disabled={!canEditEmailTemplates}
+                            onClick={() =>
+                              document
+                              .getElementById(
+                                "candidate-interview-attachment",
+                              )
+                                ?.click()
+                            }
+                          >
+                            <Upload className="w-4 h-4 mr-2" />
+                            Upload File
+                          </Button>
+
+                          {notifications.candidateInterviewAttachmentName ? (
+                            <div className="flex min-w-0 items-center gap-2 text-sm text-slate-600">
+                              <FileText className="w-4 h-4 shrink-0 text-[#003B7A]" />
+                              <span className="truncate">
+                                {
+                                  notifications.candidateInterviewAttachmentName
+                                }
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-500">
+                              No file uploaded
+                            </p>
+                          )}
+                        </div>
+
+                        <p className="mt-3 text-xs text-slate-500">
+                          This file will be attached to the interview
+                          email.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="candidate-interview-logo-attachment">
+                          Email Logo
+                        </Label>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                          <input
+                            id="candidate-interview-logo-attachment"
+                            type="file"
+                            accept=".png,.jpg,.jpeg,.gif,.webp"
+                            className="hidden"
+                            onChange={handleInterviewLogoAttachmentUpload}
+                            disabled={!canEditEmailTemplates}
+                          />
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-10"
+                            disabled={!canEditEmailTemplates}
+                            onClick={() =>
+                              document
+                                .getElementById(
+                                  "candidate-interview-logo-attachment",
+                                )
+                                ?.click()
+                            }
+                          >
+                            <Upload className="w-4 h-4 mr-2" />
+                            Upload Logo
+                          </Button>
+
+                          {notifications.candidateInterviewLogoAttachmentName ? (
+                            <p className="min-w-0 truncate text-sm text-slate-600">
+                              {
+                                notifications.candidateInterviewLogoAttachmentName
+                              }
+                            </p>
+                          ) : (
+                            <p className="text-sm text-slate-500">
+                              No logo uploaded
+                            </p>
+                          )}
+                        </div>
+
+                        <p className="mt-3 text-xs text-slate-500">
+                          This logo image will be displayed inside the
+                          interview email.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-500">
+                    Available placeholders: {"{candidateName}"},{" "}
+                    {"{jobTitle}"}, {"{companyName}"},{" "}
+                    {"{interviewDateOptions}"}
+                  </p>
+                </CollapsibleContent>
+              </Collapsible>
             </CardContent>
           </Card>
 
@@ -803,6 +1055,7 @@ export function UserProfile() {
                   checked={
                     notifications.candidateRejectedEnabled
                   }
+                  disabled={!canEditEmailTemplates}
                   onCheckedChange={(checked) =>
                     setNotifications({
                       ...notifications,
@@ -812,45 +1065,78 @@ export function UserProfile() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="candidate-rejected-subject">
-                  Subject
-                </Label>
-                <Input
-                  id="candidate-rejected-subject"
-                  value={notifications.candidateRejectedSubject}
-                  onChange={(e) =>
-                    setNotifications({
-                      ...notifications,
-                      candidateRejectedSubject: e.target.value,
-                    })
-                  }
-                  placeholder="Update on your job application"
-                />
-              </div>
+              <Collapsible
+                open={openRejectTemplate}
+                onOpenChange={setOpenRejectTemplate}
+                className="space-y-4"
+              >
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between text-left"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-900">
+                        Email content
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        {canEditEmailTemplates
+                          ? "Click to edit the rejection email template"
+                          : "Click to view the rejection email template"}
+                      </p>
+                    </div>
+                    <ChevronDown
+                      className={`h-5 w-5 text-slate-500 transition-transform ${
+                        openRejectTemplate ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                </CollapsibleTrigger>
 
-              <div className="space-y-2">
-                <Label htmlFor="candidate-rejected-message">
-                  Message
-                </Label>
-                <Textarea
-                  id="candidate-rejected-message"
-                  rows={6}
-                  value={notifications.candidateRejectedMessage}
-                  onChange={(e) =>
-                    setNotifications({
-                      ...notifications,
-                      candidateRejectedMessage: e.target.value,
-                    })
-                  }
-                  placeholder="Dear {candidateName}, thank you for your interest in {jobTitle}."
-                />
-              </div>
+                <CollapsibleContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-rejected-subject">
+                      Subject
+                    </Label>
+                    <Input
+                      id="candidate-rejected-subject"
+                      value={notifications.candidateRejectedSubject}
+                      disabled={!canEditEmailTemplates}
+                      onChange={(e) =>
+                        setNotifications({
+                          ...notifications,
+                          candidateRejectedSubject: e.target.value,
+                        })
+                      }
+                      placeholder="Update on your job application"
+                    />
+                  </div>
 
-              <p className="text-xs text-slate-500">
-                Available placeholders: {"{candidateName}"},{" "}
-                {"{jobTitle}"}, {"{companyName}"}
-              </p>
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-rejected-message">
+                      Message
+                    </Label>
+                    <Textarea
+                      id="candidate-rejected-message"
+                      rows={6}
+                      value={notifications.candidateRejectedMessage}
+                      disabled={!canEditEmailTemplates}
+                      onChange={(e) =>
+                        setNotifications({
+                          ...notifications,
+                          candidateRejectedMessage: e.target.value,
+                        })
+                      }
+                      placeholder="Dear {candidateName}, thank you for your interest in {jobTitle}."
+                    />
+                  </div>
+
+                  <p className="text-xs text-slate-500">
+                    Available placeholders: {"{candidateName}"},{" "}
+                    {"{jobTitle}"}, {"{companyName}"}
+                  </p>
+                </CollapsibleContent>
+              </Collapsible>
             </CardContent>
           </Card>
 
@@ -875,6 +1161,7 @@ export function UserProfile() {
                 <Switch
                   id="push-new-applicant"
                   checked={notifications.pushNewApplicant}
+                  disabled={!canEditEmailTemplates}
                   onCheckedChange={(checked) =>
                     setNotifications({
                       ...notifications,
@@ -897,6 +1184,7 @@ export function UserProfile() {
                 <Switch
                   id="push-interview"
                   checked={notifications.pushInterviewReminder}
+                  disabled={!canEditEmailTemplates}
                   onCheckedChange={(checked) =>
                     setNotifications({
                       ...notifications,
@@ -908,15 +1196,17 @@ export function UserProfile() {
             </CardContent>
           </Card>
 
-          <div className="flex justify-end">
-            <Button
-              className="bg-[#003B7A] hover:bg-[#002f63] text-white shadow-sm px-5"
-              onClick={handleNotificationUpdate}
-            >
-              <Save className="w-4 h-4 mr-2" />
-              Save Preferences
-            </Button>
-          </div>
+          {canEditEmailTemplates && (
+            <div className="flex justify-end">
+              <Button
+                className="bg-[#003B7A] hover:bg-[#002f63] text-white shadow-sm px-5"
+                onClick={handleNotificationUpdate}
+              >
+                <Save className="w-4 h-4 mr-2" />
+                Save Preferences
+              </Button>
+            </div>
+          )}
             </>
           )}
         </TabsContent>

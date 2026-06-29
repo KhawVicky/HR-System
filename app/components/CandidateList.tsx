@@ -484,6 +484,10 @@ export function CandidateList() {
     string | null
   >(null);
 
+  const applyStatusFilter = (status: string) => {
+    setFilterStatus(status);
+  };
+
   const [interviewPopupCandidate, setInterviewPopupCandidate] =
     useState<Candidate | null>(null);
   const [rejectPopupCandidate, setRejectPopupCandidate] =
@@ -1479,7 +1483,18 @@ export function CandidateList() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-md">
+        <Card
+          className="shadow-md cursor-pointer transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003B7A]"
+          role="button"
+          tabIndex={0}
+          onClick={() => applyStatusFilter("interview")}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              applyStatusFilter("interview");
+            }
+          }}
+        >
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-slate-500">
               In Interview
@@ -1497,7 +1512,18 @@ export function CandidateList() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-md">
+        <Card
+          className="shadow-md cursor-pointer transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003B7A]"
+          role="button"
+          tabIndex={0}
+          onClick={() => applyStatusFilter("shortlisted")}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              applyStatusFilter("shortlisted");
+            }
+          }}
+        >
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-slate-500">
               Shortlisted

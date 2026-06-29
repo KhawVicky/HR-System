@@ -70,6 +70,7 @@ import { apiFetch } from "../lib/api";
 import { formatDisplayDate, formatDisplayDateTime } from "../lib/date";
 import { getCompactPageItems } from "../lib/pagination";
 import { LoadingState } from "./LoadingState";
+import { PasswordInput } from "./PasswordInput";
 
 type UserRole = "HR Staff" | "Hiring Manager";
 type UserStatus = "Active" | "Inactive";
@@ -79,6 +80,7 @@ type UserAccount = {
   id: string;
   fullName: string;
   email: string;
+  avatarPath?: string | null;
   role: UserRole;
   status: UserStatus;
   createdAt: string;
@@ -88,6 +90,7 @@ type ApiUser = {
   id: number;
   name: string;
   email: string;
+  avatarPath?: string | null;
   status: string;
   roleId: 1 | 2;
   roleKey: "hr_staff" | "hiring_manager";
@@ -99,6 +102,7 @@ const mapApiUser = (user: ApiUser): UserAccount => ({
   id: `USR-${String(user.id).padStart(3, "0")}`,
   fullName: user.name,
   email: user.email,
+  avatarPath: user.avatarPath || null,
   role: user.roleId === 2 ? "Hiring Manager" : "HR Staff",
   status: user.status === "active" ? "Active" : "Inactive",
   createdAt: user.createdAt.slice(0, 10),
@@ -666,9 +670,8 @@ export function UserManagementPage({
                   <Label htmlFor="temporaryPassword">
                     Temporary Password
                   </Label>
-                  <Input
+                  <PasswordInput
                     id="temporaryPassword"
-                    type="text"
                     placeholder="Enter temporary password"
                     value={newUser.temporaryPassword}
                     onChange={(e) =>
@@ -872,9 +875,8 @@ export function UserManagementPage({
               <Label htmlFor="reset-temporaryPassword">
                 New Temporary Password
               </Label>
-              <Input
+              <PasswordInput
                 id="reset-temporaryPassword"
-                type="text"
                 placeholder="Enter temporary password"
                 value={resetPasswordForm.temporaryPassword}
                 onChange={(e) =>
@@ -955,12 +957,20 @@ export function UserManagementPage({
 
           <div className="border-b border-slate-200 bg-white px-8 py-6">
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#003B7A] text-lg font-bold text-white">
-                {actionHistoryUser?.fullName
-                  .split(" ")
-                  .map((part) => part[0])
-                  .join("")
-                  .slice(0, 2) || "HR"}
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#003B7A] text-lg font-bold text-white">
+                {actionHistoryUser?.avatarPath ? (
+                  <img
+                    src={actionHistoryUser.avatarPath}
+                    alt={actionHistoryUser.fullName}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  actionHistoryUser?.fullName
+                    .split(" ")
+                    .map((part) => part[0])
+                    .join("")
+                    .slice(0, 2) || "HR"
+                )}
               </div>
               <div className="min-w-0">
                 <h2 className="mt-1 text-lg font-semibold text-slate-900">
@@ -1313,9 +1323,8 @@ export function UserManagementPage({
                   <Label htmlFor="temporaryPassword">
                     Temporary Password
                   </Label>
-                  <Input
+                  <PasswordInput
                     id="temporaryPassword"
-                    type="text"
                     placeholder="Enter temporary password"
                     value={newUser.temporaryPassword}
                     onChange={(e) =>
@@ -1502,9 +1511,8 @@ export function UserManagementPage({
                   <Label htmlFor="reset-temporaryPassword">
                     New Temporary Password
                   </Label>
-                  <Input
+                  <PasswordInput
                     id="reset-temporaryPassword"
-                    type="text"
                     placeholder="Enter temporary password"
                     value={resetPasswordForm.temporaryPassword}
                     onChange={(e) =>

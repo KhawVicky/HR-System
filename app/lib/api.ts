@@ -18,6 +18,8 @@ export interface AuthUser {
   id: number;
   name: string;
   email: string;
+  phone?: string | null;
+  avatarPath?: string | null;
   department: string | null;
   status: string;
   roleId: 1 | 2;

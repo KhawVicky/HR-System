@@ -1,18 +1,23 @@
 import image_a7e321551d78150f830b1e4870452ab5d2dd7d7e from "../assets/uwc-berhad-logo.png";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import {
+  Banknote,
   Briefcase,
   Building2,
   Calendar,
   CheckCircle2,
   ChevronRight,
+  Eye,
+  EyeOff,
   FileText,
+  Lock,
   LogOut,
   Mail,
   MapPin,
   Search,
-  UserRound,
+  Shield,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,6 +33,16 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "./ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+} from "./ui/dialog";
 import {
   Select,
   SelectContent,
@@ -46,6 +61,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { LoadingState } from "./LoadingState";
+import { PasswordInput } from "./PasswordInput";
 
 const CAREERS_JOBS_PER_PAGE = 15;
 
@@ -178,9 +194,166 @@ function CandidateFooter() {
   );
 }
 
+type CandidateAuthMode = "login" | "register";
+
+function CandidateAuthPanel({
+  mode,
+  returnTo,
+  onModeChange,
+  onSuccess,
+}: {
+  mode: CandidateAuthMode;
+  returnTo: string;
+  onModeChange: (mode: CandidateAuthMode) => void;
+  onSuccess: (candidate: CandidateAccount) => void;
+}) {
+  const [form, setForm] = useState({ fullName: "", email: "", phone: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const response = await apiFetch<{ candidate: CandidateAccount }>(
+        mode === "login" ? "/candidate-auth/login" : "/candidate-auth/register",
+        {
+          method: "POST",
+          body: JSON.stringify(form),
+        },
+      );
+      storeCandidate(response.candidate);
+      toast.success(mode === "login" ? "Welcome back" : "Candidate account created");
+      onSuccess(response.candidate);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Authentication failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="w-full">
+      <CardHeader className="space-y-4 px-0 pt-0 text-center">
+        <img
+          src={image_a7e321551d78150f830b1e4870452ab5d2dd7d7e}
+          alt="UWC Logo"
+          className="mx-auto h-16 w-auto"
+        />
+        <CardTitle className="text-2xl">UWC Careers</CardTitle>
+        <CardDescription>
+          {mode === "login"
+            ? "Sign in to track your applications and manage your profile"
+            : "Create an account to apply for UWC job openings"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="px-0 pb-0">
+        <form onSubmit={submit} className="space-y-4">
+          {mode === "register" && (
+            <>
+              <div className="space-y-2">
+                <Label>Full Name</Label>
+                <Input value={form.fullName} onChange={(event) => setForm((prev) => ({ ...prev, fullName: event.target.value }))} required />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone Number</Label>
+                <Input value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} />
+              </div>
+            </>
+          )}
+          <div className="space-y-2">
+            <Label>Email</Label>
+            <Input type="email" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} required />
+          </div>
+          <div className="space-y-2">
+            <Label>Password</Label>
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                minLength={6}
+                value={form.password}
+                onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
+                className="pr-10"
+                required
+              />
+              <button
+                type="button"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((current) => !current)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+          </div>
+          <Button disabled={isSubmitting} className="w-full bg-[#003B7A] hover:bg-[#002f63]">
+            {isSubmitting ? "Please wait..." : mode === "login" ? "Login" : "Create Account"}
+          </Button>
+          <p className="text-center text-sm text-slate-600">
+            {mode === "login" ? "No account yet?" : "Already have an account?"}{" "}
+            <button
+              type="button"
+              onClick={() => onModeChange(mode === "login" ? "register" : "login")}
+              className="font-semibold text-[#003B7A] hover:underline"
+            >
+              {mode === "login" ? "Register here" : "Login here"}
+            </button>
+          </p>
+          {returnTo !== "/candidate/applications" && (
+            <p className="text-center text-xs text-slate-500">You will continue after signing in.</p>
+          )}
+        </form>
+      </CardContent>
+    </div>
+  );
+}
+
+export function CandidateAuthModal({
+  open,
+  returnTo,
+  onOpenChange,
+}: {
+  open: boolean;
+  returnTo: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<CandidateAuthMode>("login");
+
+  useEffect(() => {
+    if (open) {
+      setMode("login");
+    }
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md rounded-2xl border-slate-200 p-6 shadow-xl">
+        <CandidateAuthPanel
+          mode={mode}
+          returnTo={returnTo}
+          onModeChange={setMode}
+          onSuccess={() => {
+            onOpenChange(false);
+            if (returnTo) {
+              navigate(returnTo);
+            }
+          }}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CandidateLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const candidate = getStoredCandidate();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   const logout = async () => {
     try {
@@ -217,14 +390,18 @@ function CandidateLayout({ children }: { children: React.ReactNode }) {
                 <Button variant="ghost" size="sm" asChild>
                   <Link to="/candidate/profile">Profile</Link>
                 </Button>
-                <Button variant="outline" size="sm" onClick={logout}>
-                  <LogOut className="mr-2 h-4 w-4" />
+                <Button variant="ghost" size="sm" onClick={logout}>
+                  <LogOut className="w-4 h-4 mr-2" />
                   Logout
                 </Button>
               </>
             ) : (
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/candidate/login">Login</Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAuthModalOpen(true)}
+              >
+                Login
               </Button>
             )}
           </nav>
@@ -232,6 +409,11 @@ function CandidateLayout({ children }: { children: React.ReactNode }) {
       </header>
       <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8 lg:px-8">{children}</main>
       <CandidateFooter />
+      <CandidateAuthModal
+        open={authModalOpen}
+        returnTo={`${location.pathname}${location.search}`}
+        onOpenChange={setAuthModalOpen}
+      />
     </div>
   );
 }
@@ -251,6 +433,8 @@ export function CareersHome() {
   const [jobType, setJobType] = useState("all");
   const [selectedJobCode, setSelectedJobCode] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authReturnTo, setAuthReturnTo] = useState("/candidate/applications");
 
   useEffect(() => {
     apiFetch<{ jobs: CareerJob[] }>("/career/jobs")
@@ -324,7 +508,8 @@ export function CareersHome() {
 
   const applyToJob = (job: CareerJob) => {
     if (!getStoredCandidate()) {
-      navigate(`/candidate/login?returnTo=${encodeURIComponent(`/apply/${job.jobCode}`)}`);
+      setAuthReturnTo(`/apply/${job.jobCode}`);
+      setAuthModalOpen(true);
       return;
     }
 
@@ -446,6 +631,8 @@ export function CareersHome() {
                       <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-500">
                         <span className="inline-flex items-center gap-1"><MapPin className="h-4 w-4" />{displayJob.location || "Malaysia"}</span>
                         <span className="inline-flex items-center gap-1"><Briefcase className="h-4 w-4" />{displayJob.employmentType || "Not specified"}</span>
+                        <span className="inline-flex items-center gap-1"><Calendar className="h-4 w-4" />{formatDisplayDate(displayJob.publishedAt || displayJob.createdAt)}</span>
+                        <span className="inline-flex items-center gap-1"><Banknote className="h-4 w-4" />{displayJob.salaryRange || "Not specified"}</span>
                       </div>
                     </div>
                     <Button onClick={() => applyToJob(displayJob)} className="bg-[#003B7A] px-6 hover:bg-[#002f63]">Apply Now</Button>
@@ -457,21 +644,6 @@ export function CareersHome() {
                     <h2 className="mb-3 text-lg font-semibold text-slate-950">Job Description</h2>
                     <p className="whitespace-pre-line leading-7 text-slate-700">{displayJob.description || "Join UWC and contribute to a high-performing manufacturing and technology team."}</p>
                   </section>
-
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs font-medium uppercase text-slate-500">Department</p>
-                      <p className="mt-1 font-semibold text-slate-900">{displayJob.department}</p>
-                    </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs font-medium uppercase text-slate-500">Posted Date</p>
-                      <p className="mt-1 font-semibold text-slate-900">{formatDisplayDate(displayJob.publishedAt || displayJob.createdAt)}</p>
-                    </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs font-medium uppercase text-slate-500">Salary Range</p>
-                      <p className="mt-1 font-semibold text-slate-900">{displayJob.salaryRange || "Not specified"}</p>
-                    </div>
-                  </div>
 
                   {detailJob && (
                     <section>
@@ -514,6 +686,11 @@ export function CareersHome() {
           </div>
         </div>
       )}
+      <CandidateAuthModal
+        open={authModalOpen}
+        returnTo={authReturnTo}
+        onOpenChange={setAuthModalOpen}
+      />
     </CandidateLayout>
   );
 }
@@ -523,6 +700,7 @@ export function CareerJobDetailsPage() {
   const navigate = useNavigate();
   const [job, setJob] = useState<CareerJobDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   useEffect(() => {
     apiFetch<{ job: CareerJobDetails }>(`/career/jobs/${jobCode}`)
@@ -533,7 +711,7 @@ export function CareerJobDetailsPage() {
 
   const apply = () => {
     if (!getStoredCandidate()) {
-      navigate(`/candidate/login?returnTo=${encodeURIComponent(`/apply/${jobCode}`)}`);
+      setAuthModalOpen(true);
       return;
     }
     navigate(`/apply/${jobCode}`);
@@ -550,7 +728,6 @@ export function CareerJobDetailsPage() {
           <CandidateBreadcrumb
             items={[
               { label: "Careers", to: "/careers" },
-              { label: job.department },
               { label: job.title },
             ]}
           />
@@ -611,6 +788,11 @@ export function CareerJobDetailsPage() {
           </div>
         </div>
       )}
+      <CandidateAuthModal
+        open={authModalOpen}
+        returnTo={`/apply/${jobCode}`}
+        onOpenChange={setAuthModalOpen}
+      />
     </CandidateLayout>
   );
 }
@@ -618,89 +800,24 @@ export function CareerJobDetailsPage() {
 function CandidateAuthForm({ mode }: { mode: "login" | "register" }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [form, setForm] = useState({ fullName: "", email: "", phone: "", password: "" });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authMode, setAuthMode] = useState<CandidateAuthMode>(mode);
   const returnTo = searchParams.get("returnTo") || "/candidate/applications";
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setIsSubmitting(true);
-    try {
-      const response = await apiFetch<{ candidate: CandidateAccount }>(
-        mode === "login" ? "/candidate-auth/login" : "/candidate-auth/register",
-        {
-          method: "POST",
-          body: JSON.stringify(form),
-        },
-      );
-      storeCandidate(response.candidate);
-      toast.success(mode === "login" ? "Welcome back" : "Candidate account created");
-      navigate(returnTo);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Authentication failed");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  useEffect(() => {
+    setAuthMode(mode);
+  }, [mode]);
 
   return (
     <CandidateLayout>
       <div className="mx-auto flex min-h-[calc(100vh-16rem)] max-w-md items-center">
         <Card className="w-full rounded-2xl border-slate-200 shadow-sm">
-          <CardHeader className="space-y-4 text-center">
-            <img
-              src={image_a7e321551d78150f830b1e4870452ab5d2dd7d7e}
-              alt="UWC Logo"
-              className="mx-auto h-16 w-auto"
+          <CardContent className="p-6">
+            <CandidateAuthPanel
+              mode={authMode}
+              returnTo={returnTo}
+              onModeChange={setAuthMode}
+              onSuccess={() => navigate(returnTo)}
             />
-            <CardTitle className="text-2xl">
-              UWC Careers
-            </CardTitle>
-            <CardDescription>
-              {mode === "login"
-                ? "Sign in to track your applications and manage your profile"
-                : "Create an account to apply for UWC job openings"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={submit} className="space-y-4">
-              {mode === "register" && (
-                <>
-                  <div className="space-y-2">
-                    <Label>Full Name</Label>
-                    <Input value={form.fullName} onChange={(event) => setForm((prev) => ({ ...prev, fullName: event.target.value }))} required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Phone Number</Label>
-                    <Input value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} />
-                  </div>
-                </>
-              )}
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input type="email" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} required />
-              </div>
-              <div className="space-y-2">
-                <Label>Password</Label>
-                <Input type="password" minLength={6} value={form.password} onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))} required />
-              </div>
-              <Button disabled={isSubmitting} className="w-full bg-[#003B7A] hover:bg-[#002f63]">
-                {isSubmitting ? "Please wait..." : mode === "login" ? "Login" : "Create Account"}
-              </Button>
-              <p className="text-center text-sm text-slate-600">
-                {mode === "login" ? "No account yet?" : "Already have an account?"}{" "}
-                <Link
-                  to={
-                    mode === "login"
-                      ? `/candidate/register?returnTo=${encodeURIComponent(returnTo)}`
-                      : `/candidate/login?returnTo=${encodeURIComponent(returnTo)}`
-                  }
-                  className="font-semibold text-[#003B7A] hover:underline"
-                >
-                  {mode === "login" ? "Register here" : "Login here"}
-                </Link>
-              </p>
-            </form>
           </CardContent>
         </Card>
       </div>
@@ -768,24 +885,54 @@ export function CandidateApplicationsPage() {
         ) : applications.length === 0 ? (
           <Card className="rounded-2xl border-slate-200 p-8 text-center text-slate-500">No applications found.</Card>
         ) : (
-          <div className="space-y-3">
-            {applications.map((application) => (
-              <Card key={application.id} className="rounded-2xl border-slate-200 shadow-sm">
-                <CardContent className="grid gap-4 p-5 md:grid-cols-[1fr_160px_160px_130px] md:items-center">
-                  <div>
-                    <h2 className="font-semibold text-slate-950">{application.jobTitle}</h2>
-                    <p className="mt-1 text-sm text-slate-500">{application.department}</p>
-                  </div>
-                  <div className="text-sm text-slate-600">Submitted<br /><span className="font-medium text-slate-900">{formatDisplayDate(application.submittedDate)}</span></div>
-                  <div className="text-sm text-slate-600">Last updated<br /><span className="font-medium text-slate-900">{formatDisplayDate(application.updatedDate)}</span></div>
-                  <div className="flex items-center justify-between gap-2 md:justify-end">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(application.status)}`}>{application.status}</span>
-                    <Button variant="outline" size="sm" asChild><Link to={`/candidate/applications/${application.id}`}>View</Link></Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <Card className="overflow-hidden rounded-2xl border-slate-200 shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[34%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[10%]" />
+                </colgroup>
+                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-6 py-4">Job Title</th>
+                    <th className="px-6 py-4">Submitted Date</th>
+                    <th className="px-6 py-4">Last Updated</th>
+                    <th className="px-6 py-4">Current Status</th>
+                    <th className="px-6 py-4">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {applications.map((application) => (
+                    <tr key={application.id} className="transition-colors hover:bg-slate-50">
+                      <td className="px-6 py-5">
+                        <p className="break-words font-medium leading-snug text-slate-950">{application.jobTitle}</p>
+                        <p className="mt-1 break-words text-xs text-slate-500">{application.department}</p>
+                      </td>
+                      <td className="px-6 py-5 leading-snug text-slate-600">
+                        {formatDisplayDate(application.submittedDate)}
+                      </td>
+                      <td className="px-6 py-5 leading-snug text-slate-600">
+                        {formatDisplayDate(application.updatedDate)}
+                      </td>
+                      <td className="px-6 py-5">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(application.status)}`}>
+                          {application.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5">
+                        <Button variant="outline" size="sm" asChild>
+                          <Link to={`/candidate/applications/${application.id}`}>View</Link>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         )}
       </CandidateLayout>
     </CandidateProtected>
@@ -916,7 +1063,7 @@ export function CandidateProfilePage() {
     education: candidate?.education || "",
   });
   const [resume, setResume] = useState<File | null>(null);
-  const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "" });
+  const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
 
   useEffect(() => {
     apiFetch<{ candidate: CandidateAccount }>("/candidate/me")
@@ -952,9 +1099,23 @@ export function CandidateProfilePage() {
 
   const changePassword = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (passwords.newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters long.");
+      return;
+    }
+    if (passwords.newPassword !== passwords.confirmPassword) {
+      toast.error("New password and confirm password do not match.");
+      return;
+    }
     try {
-      await apiFetch("/candidate/password", { method: "PATCH", body: JSON.stringify(passwords) });
-      setPasswords({ currentPassword: "", newPassword: "" });
+      await apiFetch("/candidate/password", {
+        method: "PATCH",
+        body: JSON.stringify({
+          currentPassword: passwords.currentPassword,
+          newPassword: passwords.newPassword,
+        }),
+      });
+      setPasswords({ currentPassword: "", newPassword: "", confirmPassword: "" });
       toast.success("Password updated");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update password");
@@ -971,42 +1132,71 @@ export function CandidateProfilePage() {
           ]}
         />
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-slate-950">Candidate Profile</h1>
+          <h1 className="text-3xl font-bold text-slate-950">Your Profile</h1>
           <p className="mt-1 text-slate-600">Manage your contact details, education and default resume.</p>
         </div>
-        <div className="grid gap-5 lg:grid-cols-[1.3fr_0.7fr]">
-          <Card className="rounded-2xl border-slate-200 shadow-sm">
-            <CardHeader><CardTitle className="flex items-center gap-2"><UserRound className="h-5 w-5 text-[#003B7A]" />Profile</CardTitle></CardHeader>
-            <CardContent>
-              <form onSubmit={saveProfile} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2"><Label>Full name</Label><Input value={form.fullName} onChange={(event) => setForm((prev) => ({ ...prev, fullName: event.target.value }))} required /></div>
-                  <div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} required /></div>
-                  <div className="space-y-2"><Label>Phone number</Label><Input value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Education</Label><Input value={form.education} onChange={(event) => setForm((prev) => ({ ...prev, education: event.target.value }))} /></div>
-                </div>
-                <div className="space-y-2"><Label>Address</Label><Input value={form.address} onChange={(event) => setForm((prev) => ({ ...prev, address: event.target.value }))} /></div>
-                <div className="space-y-2">
-                  <Label>Default Resume</Label>
-                  <Input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(event: ChangeEvent<HTMLInputElement>) => setResume(event.target.files?.[0] || null)} />
-                  <p className="text-xs text-slate-500">{resume?.name || candidate?.defaultResumeFileName || "No default resume uploaded"}</p>
-                </div>
-                <Button className="bg-[#003B7A] hover:bg-[#002f63]">Save Profile</Button>
-              </form>
-            </CardContent>
-          </Card>
+        <Tabs defaultValue="profile" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="profile">
+              <User className="w-4 h-4 mr-2" />
+              Profile
+            </TabsTrigger>
+            <TabsTrigger value="security">
+              <Shield className="w-4 h-4 mr-2" />
+              Security
+            </TabsTrigger>
+          </TabsList>
 
-          <Card className="rounded-2xl border-slate-200 shadow-sm">
-            <CardHeader><CardTitle>Password</CardTitle></CardHeader>
-            <CardContent>
-              <form onSubmit={changePassword} className="space-y-4">
-                <div className="space-y-2"><Label>Current password</Label><Input type="password" value={passwords.currentPassword} onChange={(event) => setPasswords((prev) => ({ ...prev, currentPassword: event.target.value }))} required /></div>
-                <div className="space-y-2"><Label>New password</Label><Input type="password" minLength={6} value={passwords.newPassword} onChange={(event) => setPasswords((prev) => ({ ...prev, newPassword: event.target.value }))} required /></div>
-                <Button variant="outline">Change Password</Button>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
+          <TabsContent value="profile" className="space-y-6">
+            <Card className="rounded-2xl border-slate-200 shadow-sm">
+              <CardContent className="pt-6">
+                <form onSubmit={saveProfile} className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2"><Label>Full name</Label><Input value={form.fullName} onChange={(event) => setForm((prev) => ({ ...prev, fullName: event.target.value }))} required /></div>
+                    <div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} required /></div>
+                    <div className="space-y-2"><Label>Phone number</Label><Input value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} /></div>
+                    <div className="space-y-2"><Label>Education</Label><Input value={form.education} onChange={(event) => setForm((prev) => ({ ...prev, education: event.target.value }))} /></div>
+                  </div>
+                  <div className="space-y-2"><Label>Address</Label><Input value={form.address} onChange={(event) => setForm((prev) => ({ ...prev, address: event.target.value }))} /></div>
+                  <div className="space-y-2">
+                    <Label>Default Resume</Label>
+                    <Input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(event: ChangeEvent<HTMLInputElement>) => setResume(event.target.files?.[0] || null)} />
+                    <p className="text-xs text-slate-500">{resume?.name || candidate?.defaultResumeFileName || "No default resume uploaded"}</p>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button className="bg-[#003B7A] hover:bg-[#002f63]">Save Profile</Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="security" className="space-y-6">
+            <Card className="rounded-2xl border-slate-200 shadow-sm">
+              <CardHeader>
+                <CardTitle>Change Password</CardTitle>
+                <CardDescription>Update your password to keep your account secure</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <form onSubmit={changePassword} className="space-y-4">
+                  <div className="space-y-2"><Label>Current Password</Label><PasswordInput value={passwords.currentPassword} onChange={(event) => setPasswords((prev) => ({ ...prev, currentPassword: event.target.value }))} required /></div>
+                  <div className="space-y-2">
+                    <Label>New Password</Label>
+                    <PasswordInput minLength={8} value={passwords.newPassword} onChange={(event) => setPasswords((prev) => ({ ...prev, newPassword: event.target.value }))} required />
+                    <p className="text-xs text-slate-500">Password must be at least 8 characters long</p>
+                  </div>
+                  <div className="space-y-2"><Label>Confirm New Password</Label><PasswordInput minLength={8} value={passwords.confirmPassword} onChange={(event) => setPasswords((prev) => ({ ...prev, confirmPassword: event.target.value }))} required /></div>
+                  <div className="flex justify-end">
+                    <Button className="bg-[#003B7A] hover:bg-[#002f63] text-white shadow-sm px-5">
+                      <Lock className="w-4 h-4 mr-2" />
+                      Update Password
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </CandidateLayout>
     </CandidateProtected>
   );

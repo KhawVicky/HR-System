@@ -31,6 +31,10 @@ $method = $_SERVER["REQUEST_METHOD"];
 try {
     if ($method === "POST" && route_is($segments, ["auth", "login"])) {
         login($mysqli);
+    } elseif ($method === "POST" && route_is($segments, ["auth", "profile", "avatar"])) {
+        update_auth_profile($mysqli);
+    } elseif ($method === "PATCH" && route_is($segments, ["auth", "profile"])) {
+        update_auth_profile($mysqli);
     } elseif ($method === "POST" && route_is($segments, ["candidate-auth", "register"])) {
         candidate_register($mysqli);
     } elseif ($method === "POST" && route_is($segments, ["candidate-auth", "login"])) {
@@ -85,6 +89,8 @@ try {
         update_email_templates($mysqli);
     } elseif ($method === "POST" && route_is($segments, ["email-templates", "interview-attachment"])) {
         upload_interview_attachment($mysqli);
+    } elseif ($method === "POST" && route_is($segments, ["email-templates", "interview-logo-attachment"])) {
+        upload_interview_logo_attachment($mysqli);
     } elseif ($method === "GET" && route_is($segments, ["notifications"])) {
         notifications($mysqli);
     } elseif ($method === "PATCH" && route_is($segments, ["notifications", "read"])) {
@@ -173,6 +179,7 @@ function exec_stmt(mysqli $db, string $sql, string $types = "", array $params = 
 
 function login(mysqli $db): void
 {
+    ensure_user_profile_schema($db);
     $data = input_json();
     $email = trim((string) ($data["email"] ?? ""));
 
@@ -186,6 +193,8 @@ function login(mysqli $db): void
            u.id,
            u.full_name AS name,
            u.email,
+           u.phone,
+           u.avatar_path AS avatarPath,
            u.department,
            u.status,
            u.role_id AS roleId,
@@ -205,6 +214,13 @@ function login(mysqli $db): void
 
     exec_stmt($db, "UPDATE users SET last_login_at = NOW() WHERE id = ?", "i", [(int) $user["id"]]);
     respond(["user" => $user]);
+}
+
+function ensure_user_profile_schema(mysqli $db): void
+{
+    if (!table_column_exists($db, "users", "avatar_path")) {
+        exec_stmt($db, "ALTER TABLE users ADD COLUMN avatar_path VARCHAR(500) NULL AFTER phone");
+    }
 }
 
 function ensure_candidate_portal_schema(mysqli $db): void
@@ -1693,6 +1709,7 @@ function create_application_notifications(mysqli $db, int $applicationId, string
 
 function create_email_sent_notification(mysqli $db, int $applicationId, int $userId, string $emailType, string $interviewDateTime): void
 {
+    ensure_email_template_schema($db);
     if ($userId <= 0 || !in_array($emailType, ["interview", "reject"], true)) {
         throw new RuntimeException("Valid HR user is required to send email");
     }
@@ -1715,7 +1732,7 @@ function create_email_sent_notification(mysqli $db, int $applicationId, int $use
     }
 
     $templateKey = $emailType === "interview" ? "interview_invitation" : "reject_application";
-    $template = row($db, "SELECT id, subject, body, attachment_path AS attachmentPath, attachment_file_name AS attachmentFileName FROM email_templates WHERE template_key = ? AND is_active = 1 LIMIT 1", "s", [$templateKey]);
+    $template = row($db, "SELECT id, subject, body, attachment_path AS attachmentPath, attachment_file_name AS attachmentFileName, logo_attachment_path AS logoAttachmentPath, logo_attachment_file_name AS logoAttachmentFileName FROM email_templates WHERE template_key = ? AND is_active = 1 LIMIT 1", "s", [$templateKey]);
     $title = $emailType === "interview" ? "Interview Email Sent" : "Rejection Email Sent";
     $message = $emailType === "interview"
         ? "The interview email has been sent successfully."
@@ -1752,7 +1769,9 @@ function create_email_sent_notification(mysqli $db, int $applicationId, int $use
         (string) $application["senderEmail"],
         (string) $application["senderName"],
         $emailType === "interview" ? resolve_attachment_path((string) ($template["attachmentPath"] ?? "")) : null,
-        $emailType === "interview" ? (string) ($template["attachmentFileName"] ?? "") : ""
+        $emailType === "interview" ? (string) ($template["attachmentFileName"] ?? "") : "",
+        resolve_attachment_path((string) ($template["logoAttachmentPath"] ?? "")),
+        (string) ($template["logoAttachmentFileName"] ?? "")
     );
 
     exec_stmt(
@@ -1785,6 +1804,7 @@ function create_email_sent_notification(mysqli $db, int $applicationId, int $use
 
 function upload_interview_attachment(mysqli $db): void
 {
+    ensure_email_template_schema($db);
     if (!isset($_FILES["attachment"]) || !is_array($_FILES["attachment"])) {
         respond(["error" => "Attachment file is required"], 422);
     }
@@ -1831,8 +1851,68 @@ function upload_interview_attachment(mysqli $db): void
     ]);
 }
 
+function upload_interview_logo_attachment(mysqli $db): void
+{
+    ensure_email_template_schema($db);
+    if (!isset($_FILES["attachment"]) || !is_array($_FILES["attachment"])) {
+        respond(["error" => "Logo attachment file is required"], 422);
+    }
+
+    $file = $_FILES["attachment"];
+    if ((int) $file["error"] !== UPLOAD_ERR_OK) {
+        respond(["error" => "Logo attachment upload failed"], 422);
+    }
+
+    $originalName = basename((string) $file["name"]);
+    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    if (!in_array($extension, ["jpg", "jpeg", "png", "gif", "webp"], true)) {
+        respond(["error" => "Logo attachment must be JPG, PNG, GIF, or WEBP"], 422);
+    }
+
+    $size = (int) $file["size"];
+    if ($size <= 0 || $size > 5 * 1024 * 1024) {
+        respond(["error" => "Logo attachment size must be between 1 byte and 5 MB"], 422);
+    }
+
+    $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . "uploads" . DIRECTORY_SEPARATOR . "email-attachments";
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true)) {
+        respond(["error" => "Unable to prepare attachment upload folder"], 500);
+    }
+
+    $storedName = sprintf("interview-logo-%s.%s", bin2hex(random_bytes(6)), $extension);
+    $destination = $uploadDir . DIRECTORY_SEPARATOR . $storedName;
+    if (!move_uploaded_file((string) $file["tmp_name"], $destination)) {
+        respond(["error" => "Unable to save uploaded logo attachment"], 500);
+    }
+
+    $relativePath = "/uploads/email-attachments/{$storedName}";
+    exec_stmt(
+        $db,
+        "UPDATE email_templates SET logo_attachment_path = ?, logo_attachment_file_name = ?, updated_at = CURRENT_TIMESTAMP WHERE template_key = 'interview_invitation'",
+        "ss",
+        [$relativePath, $originalName]
+    );
+
+    respond([
+        "ok" => true,
+        "fileName" => $originalName,
+        "attachmentPath" => $relativePath,
+    ]);
+}
+
+function ensure_email_template_schema(mysqli $db): void
+{
+    if (!table_column_exists($db, "email_templates", "logo_attachment_path")) {
+        exec_stmt($db, "ALTER TABLE email_templates ADD COLUMN logo_attachment_path VARCHAR(500) NULL AFTER attachment_file_name");
+    }
+    if (!table_column_exists($db, "email_templates", "logo_attachment_file_name")) {
+        exec_stmt($db, "ALTER TABLE email_templates ADD COLUMN logo_attachment_file_name VARCHAR(255) NULL AFTER logo_attachment_path");
+    }
+}
+
 function email_templates(mysqli $db): void
 {
+    ensure_email_template_schema($db);
     $templates = rows(
         $db,
         "SELECT
@@ -1841,7 +1921,9 @@ function email_templates(mysqli $db): void
            body,
            is_active AS isActive,
            attachment_path AS attachmentPath,
-           attachment_file_name AS attachmentFileName
+           attachment_file_name AS attachmentFileName,
+           logo_attachment_path AS logoAttachmentPath,
+           logo_attachment_file_name AS logoAttachmentFileName
          FROM email_templates
          WHERE template_key IN ('interview_invitation', 'reject_application')"
     );
@@ -1856,6 +1938,7 @@ function email_templates(mysqli $db): void
 
 function update_email_templates(mysqli $db): void
 {
+    ensure_email_template_schema($db);
     $data = input_json();
     $interview = is_array($data["interview"] ?? null) ? $data["interview"] : [];
     $reject = is_array($data["reject"] ?? null) ? $data["reject"] : [];
@@ -1916,7 +1999,7 @@ function mail_config(): array
     return $config;
 }
 
-function send_recruitment_email(string $toEmail, string $toName, string $subject, string $body, string $replyToEmail, string $replyToName, ?string $attachmentPath = null, string $attachmentFileName = ""): void
+function send_recruitment_email(string $toEmail, string $toName, string $subject, string $body, string $replyToEmail, string $replyToName, ?string $attachmentPath = null, string $attachmentFileName = "", ?string $logoAttachmentPath = null, string $logoAttachmentFileName = ""): void
 {
     $config = mail_config();
     smtp_send_mail(
@@ -1928,11 +2011,13 @@ function send_recruitment_email(string $toEmail, string $toName, string $subject
         $replyToEmail,
         $replyToName,
         $attachmentPath,
-        $attachmentFileName
+        $attachmentFileName,
+        $logoAttachmentPath,
+        $logoAttachmentFileName
     );
 }
 
-function smtp_send_mail(array $config, string $toEmail, string $toName, string $subject, string $body, string $replyToEmail, string $replyToName, ?string $attachmentPath = null, string $attachmentFileName = ""): void
+function smtp_send_mail(array $config, string $toEmail, string $toName, string $subject, string $body, string $replyToEmail, string $replyToName, ?string $attachmentPath = null, string $attachmentFileName = "", ?string $logoAttachmentPath = null, string $logoAttachmentFileName = ""): void
 {
     $host = (string) ($config["host"] ?? "");
     $port = (int) ($config["port"] ?? 587);
@@ -1985,7 +2070,14 @@ function smtp_send_mail(array $config, string $toEmail, string $toName, string $
             "Subject: " . mime_header_text($subject),
             "MIME-Version: 1.0",
         ];
-        $messageBody = build_email_message_body($body, $attachmentPath, $headers, $attachmentFileName);
+        $messageBody = build_email_message_body(
+            $body,
+            $headers,
+            [
+                ["path" => $attachmentPath, "fileName" => $attachmentFileName],
+            ],
+            ["path" => $logoAttachmentPath, "fileName" => $logoAttachmentFileName]
+        );
         $message = implode("\r\n", $headers) . "\r\n\r\n" . $messageBody . "\r\n.";
         smtp_command($socket, $message, [250]);
         smtp_command($socket, "QUIT", [221]);
@@ -1994,9 +2086,23 @@ function smtp_send_mail(array $config, string $toEmail, string $toName, string $
     }
 }
 
-function build_email_message_body(string $body, ?string $attachmentPath, array &$headers, string $attachmentFileName = ""): string
+function build_email_message_body(string $body, array &$headers, array $attachments = [], ?array $inlineLogo = null): string
 {
-    if ($attachmentPath === null || $attachmentPath === "" || !is_file($attachmentPath)) {
+    $validAttachments = [];
+    foreach ($attachments as $attachment) {
+        $path = (string) ($attachment["path"] ?? "");
+        if ($path !== "" && is_file($path)) {
+            $validAttachments[] = [
+                "path" => $path,
+                "fileName" => (string) ($attachment["fileName"] ?? ""),
+            ];
+        }
+    }
+
+    $logoPath = (string) ($inlineLogo["path"] ?? "");
+    $hasInlineLogo = $logoPath !== "" && is_file($logoPath);
+
+    if (count($validAttachments) === 0 && !$hasInlineLogo) {
         $headers[] = "Content-Type: text/plain; charset=UTF-8";
         $headers[] = "Content-Transfer-Encoding: 8bit";
         return normalize_smtp_body($body);
@@ -2004,20 +2110,60 @@ function build_email_message_body(string $body, ?string $attachmentPath, array &
 
     $boundary = "uwc_boundary_" . bin2hex(random_bytes(8));
     $headers[] = "Content-Type: multipart/mixed; boundary=\"{$boundary}\"";
-    $fileName = $attachmentFileName !== "" ? $attachmentFileName : basename($attachmentPath);
-    $mimeType = attachment_mime_type($attachmentPath);
-    $encodedFile = chunk_split(base64_encode((string) file_get_contents($attachmentPath)));
 
-    return "--{$boundary}\r\n"
-        . "Content-Type: text/plain; charset=UTF-8\r\n"
-        . "Content-Transfer-Encoding: 8bit\r\n\r\n"
-        . normalize_smtp_body($body) . "\r\n"
-        . "--{$boundary}\r\n"
-        . "Content-Type: {$mimeType}; name=\"" . addcslashes($fileName, "\"\\") . "\"\r\n"
-        . "Content-Transfer-Encoding: base64\r\n"
-        . "Content-Disposition: attachment; filename=\"" . addcslashes($fileName, "\"\\") . "\"\r\n\r\n"
-        . $encodedFile . "\r\n"
-        . "--{$boundary}--";
+    if ($hasInlineLogo) {
+        $relatedBoundary = "uwc_related_" . bin2hex(random_bytes(8));
+        $logoCid = "uwc-logo-" . bin2hex(random_bytes(6));
+        $logoFileName = (string) ($inlineLogo["fileName"] ?? "");
+        $logoFileName = $logoFileName !== "" ? $logoFileName : basename($logoPath);
+        $escapedLogoFileName = addcslashes($logoFileName, "\"\\");
+        $logoMimeType = attachment_mime_type($logoPath);
+        $encodedLogo = chunk_split(base64_encode((string) file_get_contents($logoPath)));
+
+        $message = "--{$boundary}\r\n"
+            . "Content-Type: multipart/related; boundary=\"{$relatedBoundary}\"\r\n\r\n"
+            . "--{$relatedBoundary}\r\n"
+            . "Content-Type: text/html; charset=UTF-8\r\n"
+            . "Content-Transfer-Encoding: 8bit\r\n\r\n"
+            . build_html_email_body($body, $logoCid) . "\r\n"
+            . "--{$relatedBoundary}\r\n"
+            . "Content-Type: {$logoMimeType}; name=\"{$escapedLogoFileName}\"\r\n"
+            . "Content-Transfer-Encoding: base64\r\n"
+            . "Content-ID: <{$logoCid}>\r\n"
+            . "Content-Disposition: inline; filename=\"{$escapedLogoFileName}\"\r\n\r\n"
+            . $encodedLogo . "\r\n"
+            . "--{$relatedBoundary}--\r\n";
+    } else {
+        $message = "--{$boundary}\r\n"
+            . "Content-Type: text/plain; charset=UTF-8\r\n"
+            . "Content-Transfer-Encoding: 8bit\r\n\r\n"
+            . normalize_smtp_body($body) . "\r\n";
+    }
+
+    foreach ($validAttachments as $attachment) {
+        $path = (string) $attachment["path"];
+        $fileName = $attachment["fileName"] !== "" ? (string) $attachment["fileName"] : basename($path);
+        $mimeType = attachment_mime_type($path);
+        $encodedFile = chunk_split(base64_encode((string) file_get_contents($path)));
+        $escapedFileName = addcslashes($fileName, "\"\\");
+
+        $message .= "--{$boundary}\r\n"
+            . "Content-Type: {$mimeType}; name=\"{$escapedFileName}\"\r\n"
+            . "Content-Transfer-Encoding: base64\r\n"
+            . "Content-Disposition: attachment; filename=\"{$escapedFileName}\"\r\n\r\n"
+            . $encodedFile . "\r\n";
+    }
+
+    return $message . "--{$boundary}--";
+}
+
+function build_html_email_body(string $body, string $logoCid): string
+{
+    $escapedBody = nl2br(htmlspecialchars(normalize_smtp_body($body), ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8"));
+    return "<!doctype html><html><body style=\"font-family:Arial,sans-serif;color:#111827;line-height:1.5;\">"
+        . "<div style=\"margin-bottom:20px;\"><img src=\"cid:{$logoCid}\" alt=\"UWC Logo\" style=\"max-width:140px;height:auto;display:block;\"></div>"
+        . "<div>{$escapedBody}</div>"
+        . "</body></html>";
 }
 
 function resolve_attachment_path(string $path): ?string
@@ -2278,6 +2424,7 @@ function normalize_uploaded_files(array $fileInput): array
 
 function users(mysqli $db): void
 {
+    ensure_user_profile_schema($db);
     respond([
         "users" => rows(
             $db,
@@ -2287,6 +2434,7 @@ function users(mysqli $db): void
                u.email,
                u.department,
                u.phone,
+               u.avatar_path AS avatarPath,
                u.status,
                u.role_id AS roleId,
                CASE WHEN u.role_id = 2 THEN 'hiring_manager' ELSE 'hr_staff' END AS roleKey,
@@ -2298,6 +2446,109 @@ function users(mysqli $db): void
              ORDER BY u.role_id, u.full_name"
         )
     ]);
+}
+
+function save_user_avatar(): string
+{
+    if (!isset($_FILES["avatar"]) || !is_array($_FILES["avatar"]) || (int) ($_FILES["avatar"]["error"] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return "";
+    }
+
+    $file = $_FILES["avatar"];
+    if ((int) $file["error"] !== UPLOAD_ERR_OK) {
+        respond(["error" => "Avatar upload failed"], 422);
+    }
+
+    $originalName = basename((string) $file["name"]);
+    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    if (!in_array($extension, ["jpg", "jpeg", "png", "gif", "webp"], true)) {
+        respond(["error" => "Avatar must be JPG, PNG, GIF, or WEBP"], 422);
+    }
+
+    $size = (int) $file["size"];
+    if ($size <= 0 || $size > 5 * 1024 * 1024) {
+        respond(["error" => "Avatar size must be between 1 byte and 5 MB"], 422);
+    }
+
+    $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . "uploads" . DIRECTORY_SEPARATOR . "user-avatars";
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true)) {
+        respond(["error" => "Unable to prepare avatar upload folder"], 500);
+    }
+
+    $storedName = sprintf("user-avatar-%s.%s", bin2hex(random_bytes(6)), $extension);
+    if (!move_uploaded_file((string) $file["tmp_name"], $uploadDir . DIRECTORY_SEPARATOR . $storedName)) {
+        respond(["error" => "Unable to save uploaded avatar"], 500);
+    }
+
+    $scheme = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off") ? "https" : "http";
+    $host = (string) ($_SERVER["HTTP_HOST"] ?? "localhost");
+    $basePath = rtrim(str_replace("\\", "/", dirname((string) ($_SERVER["SCRIPT_NAME"] ?? "/api.php"))), "/");
+    return "{$scheme}://{$host}{$basePath}/uploads/user-avatars/{$storedName}";
+}
+
+function update_auth_profile(mysqli $db): void
+{
+    ensure_user_profile_schema($db);
+    $data = input_data();
+    $userId = (int) ($data["userId"] ?? 0);
+    $fullName = trim((string) ($data["fullName"] ?? ""));
+    $department = trim((string) ($data["department"] ?? ""));
+    $phone = trim((string) ($data["phone"] ?? ""));
+    $avatarPath = save_user_avatar();
+
+    if ($userId <= 0) {
+        respond(["error" => "Invalid user"], 422);
+    }
+
+    if ($fullName === "" || $department === "") {
+        respond(["error" => "Full name and department are required"], 422);
+    }
+
+    $existing = row($db, "SELECT id FROM users WHERE id = ? AND status = 'active' LIMIT 1", "i", [$userId]);
+    if (!$existing) {
+        respond(["error" => "Active user not found"], 404);
+    }
+
+    if ($avatarPath !== "") {
+        exec_stmt(
+            $db,
+            "UPDATE users SET full_name = ?, department = ?, phone = ?, avatar_path = ?, updated_at = NOW() WHERE id = ?",
+            "ssssi",
+            [$fullName, $department, $phone, $avatarPath, $userId]
+        );
+    } else {
+        exec_stmt(
+            $db,
+            "UPDATE users SET full_name = ?, department = ?, phone = ?, updated_at = NOW() WHERE id = ?",
+            "sssi",
+            [$fullName, $department, $phone, $userId]
+        );
+    }
+
+    $user = row(
+        $db,
+        "SELECT
+           u.id,
+           u.full_name AS name,
+           u.email,
+           u.department,
+           u.phone,
+           u.avatar_path AS avatarPath,
+           u.status,
+           u.role_id AS roleId,
+           CASE WHEN u.role_id = 2 THEN 'hiring_manager' ELSE 'hr_staff' END AS roleKey,
+           r.role_name AS roleName,
+           u.last_login_at AS lastLoginAt,
+           u.created_at AS createdAt
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+         WHERE u.id = ?
+         LIMIT 1",
+        "i",
+        [$userId]
+    );
+
+    respond(["user" => $user]);
 }
 
 function user_action_logs(mysqli $db, int $userId): void
@@ -2341,6 +2592,7 @@ function user_action_logs(mysqli $db, int $userId): void
 
 function create_user(mysqli $db): void
 {
+    ensure_user_profile_schema($db);
     $data = input_json();
     $fullName = trim((string) ($data["fullName"] ?? ""));
     $email = trim((string) ($data["email"] ?? ""));
@@ -2400,6 +2652,7 @@ function create_user(mysqli $db): void
            u.email,
            u.department,
            u.phone,
+           u.avatar_path AS avatarPath,
            u.status,
            u.role_id AS roleId,
            CASE WHEN u.role_id = 2 THEN 'hiring_manager' ELSE 'hr_staff' END AS roleKey,
