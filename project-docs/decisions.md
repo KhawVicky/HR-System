@@ -1,38 +1,90 @@
-# Decisions
+﻿# Decisions
+
+This file stores durable decisions that future Codex sessions must follow. Do not use it as a changelog.
 
 ## Product Decisions
 
 - The system is a decision support system, not an automatic hiring decision system.
-- Candidate access is limited to the application page through a unique application link.
-- HR and hiring manager users require login.
-- Score breakdown is a key system differentiator.
-- Eligibility filters are separate from ranking score.
-- Filtered out candidates may still have a score and score breakdown.
+- Final hiring decisions remain with UWC Berhad staff.
+- The system differentiates itself from a normal ATS through custom criteria scoring, weighted ranking, eligibility filtering, and transparent score breakdowns.
 - Attendance analytics is optional and secondary to recruitment decision support.
+- Internal HR users must log in.
+- Candidate access is separated from internal HR access.
+- Candidate-facing pages must not expose internal score, rank, score breakdown, HR notes, eligibility filter details, or other candidates.
 
-## Technical Decisions
+## Roles and Access
+
+- The system has two internal roles only: HR Staff and Hiring Manager.
+- `roles.id = 1` is HR Staff.
+- `roles.id = 2` is Hiring Manager.
+- HR Efficiency and User Management are visible only to Hiring Manager users.
+- Candidate accounts are stored separately from internal HR users in `candidate_accounts`.
+- Candidate sessions are stored in `candidate_sessions`.
+- Candidate APIs must verify candidate identity and check `candidate_id` before returning or updating application records.
+
+## Database Decisions
+
+- Local prototype database name is `uwc_hr_decision_support`.
+- `database/schema.sql` is the schema source of truth.
+- Dated migration files in `database/migrations/` document incremental schema changes.
+- `candidate_job_history` was removed because candidate job history is derived from `applications`.
+- `candidate_scores` was removed because `applications.total_score` is the official prototype score.
+- `score_breakdowns` links directly to `applications`.
+- Duplicate candidate applications for the same job keep one current row in `applications`.
+- Confirmed resubmissions archive the previous application state in `application_submission_history`.
+- Uploaded files are stored on disk; database tables store file metadata and paths.
+
+## Local Development Decisions
 
 - Frontend uses React, TypeScript, Vite, and Tailwind.
-- XAMPP MySQL is acceptable for local development and prototype demonstration.
-- Local database name is `uwc_hr_decision_support`.
-- The schema source of truth is `database/schema.sql`.
-- Duplicate candidate applications for the same job keep one current row in `applications`; confirmed resubmissions archive the previous state in `application_submission_history`.
-- XAMPP Apache is used to serve the local PHP API instead of PHP built-in server because it is more stable on the current Windows path setup.
+- XAMPP Apache serves the local PHP API.
+- XAMPP MariaDB is acceptable for local prototype development, although MySQL instability may require a future replacement.
+- API source is `server/api.php`.
+- XAMPP deployed API copy is `C:\xampp\htdocs\uwc-hr-api\api.php`.
+- `npm run dev:api` syncs the API source to XAMPP.
 - Frontend API requests use query routing through `api.php?route=...` to avoid Apache PATH_INFO configuration issues.
-- User roles are defined in `roles`; `users.role_id` references `roles.id`. The system keeps only HR Staff and Hiring Manager roles.
-- `candidate_job_history` was removed because candidate job history can be derived from `applications`.
-- `candidate_scores` was removed because the prototype only needs one official score per application; `applications.total_score` is the score source of truth and `score_breakdowns` links directly to `applications`.
-- Notifications are stored in the existing `notifications` table and are kept for 90 days. Hover preview does not mark a message as read; opening the full notifications page does. The feature keeps only two notification types: `new_application` for all active internal user accounts and `email_sent` for the HR user who sent the email.
-- The system has no Admin role. HR Efficiency and User Management are visible only to Hiring Manager users.
-- Project memory is stored in `project-docs/`.
-- Main project rules are stored in `AGENTS.md`.
-- HR Efficiency only includes applications that HR has reviewed. Reviewed and shortlisted applications show their review action time but leave Processing Time blank because the workflow is incomplete. Processing time is only measured from submission to the latest successful interview/rejection email after the current submission.
-- User-visible dates use `DD/MM/YYYY`; user-visible timestamps use `DD/MM/YYYY, hh:mm AM/PM`. API values, form inputs, sorting values, and export filenames keep their machine-readable formats.
-- HR processing analytics only includes applications with a successfully sent interview or rejection email after the current submission. Duration is measured from application submission to the latest qualifying email, while the HR grouping uses the application's assigned first reviewer.
-- HR processing chart filters are shared between both charts and persist when either expanded chart modal is opened. Both expanded charts use the same Date Range, Job, Department, and Email Outcome filters.
-- HR processing analytics filter options use the jobs catalog but only expose departments that contain active jobs. Department is the parent filter for Job: while `All Departments` is selected, Job has no individual options; selecting a department shows only its active jobs and clears an incompatible selected job.
-- Processing Time Trend groups and filters completed applications by the latest successful interview/rejection email date. Processing duration itself remains measured from application submission to that completed action.
-- Expanded analytics views may derive display-only summaries and CSV exports from the already-filtered completed application data. These summaries do not change the completed application definition, assigned HR logic, processing-time calculation, or established filters.
-- Candidate Career Portal accounts are stored separately from internal HR users in `candidate_accounts`, with browser sessions stored in `candidate_sessions`. Candidate APIs require a bearer token and always check `candidate_id` before returning or updating application records.
-- The existing public `/apply` flow is retained for compatibility, but it now reuses the candidate session when available. The newer career flow links logged-in candidates to `/apply/:jobCode`, while unauthenticated candidates are sent through candidate login/register with a return path.
-- Candidate-facing application statuses are mapped from internal HR statuses. Candidates never see internal `filtered_out`, score, rank, HR notes, score breakdown, or eligibility details.
+
+## Application Status Decisions
+
+- Shared frontend status helpers belong in `app/lib/applicationStatus.ts`.
+- Candidate-facing statuses are:
+  - Submitted
+  - Under Review
+  - Shortlisted
+  - Interview
+  - Rejected
+  - Withdrawn
+- Internal `filtered_out` must not be shown to candidates; candidate-facing display should map it to a non-internal result.
+- Pending review means the application is still `new`.
+- `withdrawn` is a valid HR-visible and candidate-visible status.
+
+## Notification Decisions
+
+- Notifications are stored in `notifications`.
+- Notifications are retained for 90 days.
+- Notification hover preview does not mark messages as read.
+- Opening the full notifications page marks messages as read.
+- New application notifications are visible to all active internal user accounts.
+- Email sent notifications are visible only to the HR user who sent the email.
+
+## Email and Action Log Decisions
+
+- Email templates are stored in `email_templates`.
+- Interview and rejection emails use persisted templates from Notification settings.
+- Interview email can include a candidate attachment.
+- Email logo is embedded inline in the email body, not sent as a downloadable logo attachment.
+- Candidate screening actions are stored in `hr_action_logs`.
+- Rejection reasons use `hr_action_logs.reason_type` and `hr_action_logs.reason_details`.
+- Rejection email and direct rejection action wording must stay consistent across Candidate List, HR action history, and Recent Processing Details.
+
+## HR Efficiency and Analytics Decisions
+
+- Responsible HR is the first HR user assigned when reviewing the application unless explicitly reset by resubmission logic.
+- Processing time is measured from application submission to the first completed processing action.
+- A completed processing action can be an interview email, rejection email, or direct rejection when the UI treats it as completed.
+- If an interview email is sent first, later rejection or interviewed follow-up badges may appear, but they do not replace the original processing time.
+- HR processing analytics groups completed applications by the completed action date.
+- HR processing analytics uses assigned HR for grouping, not job creator.
+- Date filters in processing analytics use completed processing date.
+- User-visible dates use `DD/MM/YYYY`.
+- User-visible timestamps use `DD/MM/YYYY, hh:mm AM/PM`.

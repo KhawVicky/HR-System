@@ -28,6 +28,11 @@ import {
   storeCandidate,
   type CandidateAccount,
 } from "../lib/api";
+import {
+  CANDIDATE_STATUS_OPTIONS,
+  getCandidateStatusBadgeClass,
+  type CandidateFacingStatus,
+} from "../lib/applicationStatus";
 import { formatDisplayDate } from "../lib/date";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
@@ -92,16 +97,8 @@ type CandidateApplication = {
   department: string;
   submittedDate: string;
   updatedDate: string;
-  status: CandidateStatus;
+  status: CandidateFacingStatus;
 };
-
-type CandidateStatus =
-  | "Submitted"
-  | "Under Review"
-  | "Shortlisted"
-  | "Interview"
-  | "Rejected"
-  | "Withdrawn";
 
 type CandidateApplicationDetails = CandidateApplication & {
   fullName: string;
@@ -127,25 +124,6 @@ type CandidateApplicationDetails = CandidateApplication & {
     subject: string | null;
   };
 };
-
-function statusClass(status: CandidateStatus) {
-  switch (status) {
-    case "Submitted":
-      return "bg-amber-50 text-amber-700";
-    case "Under Review":
-      return "bg-green-50 text-green-700";
-    case "Shortlisted":
-      return "bg-blue-50 text-blue-700";
-    case "Interview":
-      return "bg-sky-50 text-sky-700";
-    case "Rejected":
-      return "bg-red-50 text-red-700";
-    case "Withdrawn":
-      return "bg-slate-100 text-slate-600";
-    default:
-      return "bg-slate-100 text-slate-600";
-  }
-}
 
 type CandidateBreadcrumbItem = {
   label: string;
@@ -234,7 +212,7 @@ function CandidateAuthPanel({
 
   return (
     <div className="w-full">
-      <CardHeader className="space-y-4 px-0 pt-0 text-center">
+      <CardHeader className="space-y-1 px-0 pb-5 pt-0 text-center">
         <img
           src={image_a7e321551d78150f830b1e4870452ab5d2dd7d7e}
           alt="UWC Logo"
@@ -332,7 +310,7 @@ export function CandidateAuthModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md rounded-2xl border-slate-200 p-6 shadow-xl">
+      <DialogContent className="max-w-md rounded-2xl border-slate-200 px-6 pb-0 pt-6 shadow-xl">
         <CandidateAuthPanel
           mode={mode}
           returnTo={returnTo}
@@ -873,7 +851,7 @@ export function CandidateApplicationsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
-              {["Submitted", "Under Review", "Shortlisted", "Interview", "Rejected", "Withdrawn"].map((item) => (
+              {CANDIDATE_STATUS_OPTIONS.map((item) => (
                 <SelectItem key={item} value={item}>{item}</SelectItem>
               ))}
             </SelectContent>
@@ -918,7 +896,7 @@ export function CandidateApplicationsPage() {
                         {formatDisplayDate(application.updatedDate)}
                       </td>
                       <td className="px-6 py-5">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(application.status)}`}>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getCandidateStatusBadgeClass(application.status)}`}>
                           {application.status}
                         </span>
                       </td>
@@ -991,7 +969,7 @@ export function CandidateApplicationDetailsPage() {
                   <p className="mt-2 text-sm text-slate-500">Submitted {formatDisplayDate(application.submittedDate)}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`rounded-full px-3 py-1 text-sm font-semibold ${statusClass(application.status)}`}>{application.status}</span>
+                  <span className={`rounded-full px-3 py-1 text-sm font-semibold ${getCandidateStatusBadgeClass(application.status)}`}>{application.status}</span>
                   {canWithdraw && <Button variant="outline" onClick={() => setConfirmWithdraw(true)}>Withdraw</Button>}
                 </div>
               </CardContent>

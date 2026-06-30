@@ -15,6 +15,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch } from "../lib/api";
+import {
+  getApplicationStatusLabel,
+  getSoftApplicationStatusBadgeClass,
+} from "../lib/applicationStatus";
 import { formatDisplayDateTime } from "../lib/date";
 import { getCompactPageItems } from "../lib/pagination";
 import {
@@ -63,28 +67,16 @@ const formatProcessingTime = (minutes: number | null) => {
   return parts.join(" ");
 };
 
-const processingStatusLabel = {
-  reviewed: "Reviewed",
-  shortlisted: "Shortlisted",
-  interview: "Interview",
-  interviewed: "Interviewed",
-  rejected: "Rejected",
-  withdrawn: "Withdrawn",
-  filtered_out: "Filtered Out",
-  interview_email_sent: "Interview Email Sent",
-  rejection_email_sent: "Rejection Email Sent",
+const processingStatusLabel = (status: string) => {
+  if (status === "interview_email_sent") return "Interview Email Sent";
+  if (status === "rejection_email_sent") return "Rejection Email Sent";
+  return getApplicationStatusLabel(status);
 };
 
-const processingStatusClass = {
-  reviewed: "bg-green-50 text-green-700",
-  shortlisted: "bg-amber-50 text-amber-700",
-  interview: "bg-blue-50 text-blue-700",
-  interviewed: "bg-sky-50 text-sky-700",
-  rejected: "bg-red-50 text-red-700",
-  withdrawn: "bg-slate-100 text-slate-600",
-  filtered_out: "bg-slate-100 text-slate-600",
-  interview_email_sent: "bg-blue-50 text-blue-700",
-  rejection_email_sent: "bg-red-50 text-red-700",
+const processingStatusClass = (status: string) => {
+  if (status === "interview_email_sent") return "bg-blue-50 text-blue-700";
+  if (status === "rejection_email_sent") return "bg-red-50 text-red-700";
+  return getSoftApplicationStatusBadgeClass(status);
 };
 
 const getFollowUpStatus = (item: CandidateProcessing) =>
@@ -311,15 +303,15 @@ export function HREfficiencyDashboard({
                         </p>
                         <div className="mt-1.5 flex flex-col items-start gap-1">
                           <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${processingStatusClass[item.processingStatus]}`}
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${processingStatusClass(item.processingStatus)}`}
                           >
-                            {processingStatusLabel[item.processingStatus]}
+                            {processingStatusLabel(item.processingStatus)}
                           </span>
                           {followUpStatus && (
                             <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${processingStatusClass[followUpStatus]}`}
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${processingStatusClass(followUpStatus)}`}
                             >
-                              {processingStatusLabel[followUpStatus]}
+                              {processingStatusLabel(followUpStatus)}
                             </span>
                           )}
                         </div>

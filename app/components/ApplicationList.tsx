@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 
 import { apiFetch } from "../lib/api";
+import { getApplicationStatusBadgeClass } from "../lib/applicationStatus";
 import { formatDisplayDateTime } from "../lib/date";
 import { getCompactPageItems } from "../lib/pagination";
 import { LoadingState } from "./LoadingState";
@@ -49,17 +50,6 @@ const filterLabels: Record<string, string> = {
   all: "All Applications",
   last24: "New Applications",
   pending: "Pending Reviews",
-};
-
-const statusBadgeClass = (status: string) => {
-  if (status === "new") return "bg-yellow-600 text-white";
-  if (status === "reviewed") return "bg-green-600 text-white";
-  if (status === "shortlisted") return "bg-amber-500 text-white";
-  if (status === "interview") return "bg-blue-600 text-white";
-  if (status === "interviewed") return "bg-sky-700 text-white";
-  if (status === "rejected") return "bg-red-600 text-white";
-  if (status === "withdrawn") return "bg-slate-500 text-white";
-  return "bg-slate-500 text-white";
 };
 
 const eligibilityBadgeClass = (status: string) => {
@@ -305,7 +295,7 @@ export function ApplicationList() {
                         : Number(application.score).toFixed(1)}
                     </td>
                     <td className="px-6 py-5">
-                      <Badge className={statusBadgeClass(application.status)}>
+                      <Badge className={getApplicationStatusBadgeClass(application.status)}>
                         {formatStatus(application.status)}
                       </Badge>
                     </td>

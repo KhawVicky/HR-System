@@ -1,25 +1,21 @@
 # Handover Notes
 
-## Current Context
+Use this file only when work is unfinished or blocked.
 
-The project is a UWC Berhad HR recruitment decision support system. The current codebase contains a React frontend prototype with multiple HR pages and mock data.
+## Active Handover
 
-## Current Priorities
+- No active blocker recorded.
 
-1. Add create/update APIs for job creation and criteria management.
-2. Implement real resume file upload handling.
-3. Implement interview/reject email log creation.
-4. Preserve the project scope around recruitment decision support.
+## Resume Checklist
 
-## Important Notes
+- Check `git status --short`.
+- Read `progress.md` for current status and next tasks.
+- Read `decisions.md` before changing product rules, status behavior, database design, authentication, notifications, or analytics.
+- If backend changed, sync `server/api.php` to XAMPP with `npm run dev:api`.
 
-- Original UI design has been restored for the main pages after the first DB integration changed too much of the layout.
-- The PHP API and database seed are ready, but core recruitment pages should be reconnected carefully without rewriting page structure.
-- The database schema is ready at `database/schema.sql`.
-- Additional demo data is stored in `database/seed-demo.sql`.
-- API source is `server/api.php`; deployed copy is `C:\xampp\htdocs\uwc-hr-api\api.php`.
-- Frontend API helper is `app/lib/api.ts`.
-- XAMPP MariaDB import has been verified.
-- Candidate score breakdown and ranking are central features.
-- Attendance analytics should remain optional.
-- Use `project-docs/` to keep project memory updated.
+## Important Local Paths
+
+- API source: `server/api.php`
+- XAMPP API copy: `C:\xampp\htdocs\uwc-hr-api\api.php`
+- Frontend API helper: `app/lib/api.ts`
+- Database schema: `database/schema.sql`

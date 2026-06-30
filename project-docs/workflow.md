@@ -1,58 +1,40 @@
 # Development Workflow
 
-## Main Rule
+`AGENTS.md` is the main rule file. This file is only a quick checklist for daily work.
 
-Use `AGENTS.md` as the main project rule file and `project-docs/` as the project memory folder.
+## Small Tasks
 
-## Main Control Thread
+- Read only the relevant source files.
+- Keep the change focused.
+- Run the most relevant check, usually `npm run build`.
+- Do not update project memory unless the change affects behavior, database structure, workflow, or a verified bug.
 
-The main control thread reads current code and project documents, understands project status, and breaks the work into smaller tasks.
+## Larger Tasks
 
-Responsibilities:
+- Read `AGENTS.md` and the relevant files in `project-docs/`.
+- Split work into frontend, backend, database, and bug-fix parts when useful.
+- Use sub-agents for independent investigation or review tasks.
+- Use a worktree or branch only for risky or broad changes.
 
-- Read current code before planning changes.
-- Read relevant `project-docs/` files.
-- Split work into frontend, backend, database, and bug-fixing tasks.
-- Decide when to use a short-term worktree or branch.
-- Integrate completed work.
-- Update project memory.
+## Project Memory Routing
 
-## Specialist Threads
+- `progress.md`: current status and next tasks.
+- `decisions.md`: decisions future Codex sessions must obey.
+- `bug-log.md`: symptom, cause, fix, and verification.
+- `handover.md`: unfinished work or blockers.
+- `database-plan.md`: schema and data-model planning.
 
-Frontend, backend, database, and bug-fixing threads handle their own responsibilities.
+## Local Workflow
 
-Each thread should:
+- Frontend source runs with `npm run dev`.
+- Frontend verification uses `npm run build`.
+- PHP API source is `server/api.php`.
+- XAMPP API copy is updated with `npm run dev:api`.
+- Database source of truth is `database/schema.sql` plus dated migrations.
 
-- Work within its assigned scope.
-- Avoid unrelated edits.
-- Leave handover notes when work is incomplete.
-- Record important findings in `project-docs/`.
+## Git Workflow
 
-## Worktree Flow
-
-Use a short-term worktree or branch when a task is independent, risky, or touches many files.
-
-Flow:
-
-1. Create isolated worktree or branch.
-2. Complete task.
-3. Run relevant checks.
-4. Commit locally.
-5. Merge back into main branch.
-6. Update `project-docs/progress.md`.
-7. Update `project-docs/handover.md` when needed.
-
-## Documentation Flow
-
-Update these files during development:
-
-- `progress.md` for completed work and next tasks.
-- `decisions.md` for product or technical decisions.
-- `bug-log.md` for root causes and fixes.
-- `handover.md` for session transfer notes.
-- `database-plan.md` for schema planning.
-
-## Backup Flow
-
-The final main branch should be pushed to cloud for backup and synchronization after the user confirms the remote repository.
-
+- Do not use `git add .`.
+- Stage explicit paths only.
+- Keep `.tmp/` out of commits.
+- Push to GitHub only when the user asks.
