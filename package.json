@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "dev:api": "powershell -NoProfile -Command \"Copy-Item -LiteralPath server\\api.php -Destination C:\\xampp\\htdocs\\uwc-hr-api\\api.php -Force\"",
+    "dev:api": "powershell -NoProfile -Command \"Copy-Item -LiteralPath server\\api.php -Destination C:\\xampp\\htdocs\\uwc-hr-api\\api.php -Force; Copy-Item -LiteralPath server\\bootstrap.php -Destination C:\\xampp\\htdocs\\uwc-hr-api\\bootstrap.php -Force; New-Item -ItemType Directory -Path C:\\xampp\\htdocs\\uwc-hr-api\\helpers -Force | Out-Null; Copy-Item -LiteralPath server\\helpers\\response.php -Destination C:\\xampp\\htdocs\\uwc-hr-api\\helpers\\response.php -Force; Copy-Item -LiteralPath server\\helpers\\auth.php -Destination C:\\xampp\\htdocs\\uwc-hr-api\\helpers\\auth.php -Force; Copy-Item -LiteralPath server\\helpers\\files.php -Destination C:\\xampp\\htdocs\\uwc-hr-api\\helpers\\files.php -Force\"",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0"
   },

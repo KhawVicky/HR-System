@@ -48,6 +48,9 @@ export interface JobSummary {
   avgScore: number;
   shortlistedCount: number;
   pendingCount: number;
+  interviewCount: number;
+  rejectedCount: number;
+  filteredOutCount: number;
 }
 
 export interface NotificationItem {

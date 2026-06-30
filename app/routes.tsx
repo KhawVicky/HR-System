@@ -1,19 +1,19 @@
 import { createBrowserRouter, Navigate } from "react-router";
-import { Root } from "./components/Root";
-import { Login } from "./components/Login";
-import { Dashboard } from "./components/Dashboard";
-import { JobDetails } from "./components/JobDetails";
-import { CandidateList } from "./components/CandidateList";
-import { CreateJob } from "./components/CreateJob";
-import { ApplyJob } from "./components/ApplyJob";
-import { AttendanceAnalytics } from "./components/AttendanceAnalytics";
-import { Reports } from "./components/Reports";
-import { UserProfile } from "./components/UserProfile";
-import { NotificationsPage } from "./components/NotificationsPage";
-import { HRManagement } from "./components/HRManagement";
-import { DepartmentJobs } from "./components/DepartmentJobs";
-import { JobManagement } from "./components/JobManagement";
-import { ApplicationList } from "./components/ApplicationList";
+import { Root } from "./components/shared/Root";
+import { Login } from "./components/auth/Login";
+import { Dashboard } from "./components/dashboard/Dashboard";
+import { JobDetails } from "./components/jobs/JobDetails";
+import { CandidateList } from "./components/candidates/CandidateList";
+import { CreateJob } from "./components/jobs/CreateJob";
+import { ApplyJob } from "./components/candidate-portal/ApplyJob";
+import { AttendanceAnalytics } from "./components/attendance/AttendanceAnalytics";
+import { Reports } from "./components/reports/Reports";
+import { UserProfile } from "./components/profile/UserProfile";
+import { NotificationsPage } from "./components/notifications/NotificationsPage";
+import { HRManagement } from "./components/users/HRManagement";
+import { DepartmentJobs } from "./components/jobs/DepartmentJobs";
+import { JobManagement } from "./components/jobs/JobManagement";
+import { ApplicationList } from "./components/candidates/ApplicationList";
 import {
   CareersHome,
   CareerJobDetailsPage,
@@ -22,8 +22,8 @@ import {
   CandidateLogin,
   CandidateProfilePage,
   CandidateRegister,
-} from "./components/CandidatePortal";
-import { NotFound } from "./components/NotFound";
+} from "./components/candidate-portal/CandidatePortal";
+import { NotFound } from "./components/shared/NotFound";
 import { canManageUsers, getStoredUser } from "./lib/api";
 
 // Simple auth check

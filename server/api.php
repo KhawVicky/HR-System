@@ -2,23 +2,10 @@
 
 declare(strict_types=1);
 
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
-header("Access-Control-Allow-Methods: GET, POST, PATCH, OPTIONS");
-header("Content-Type: application/json");
-
-if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
-    http_response_code(204);
-    exit;
-}
-
-$mysqli = new mysqli("127.0.0.1", "root", "", "uwc_hr_decision_support", 3306);
-
-if ($mysqli->connect_errno) {
-    respond(["error" => "Database connection failed", "detail" => $mysqli->connect_error], 500);
-}
-
-$mysqli->set_charset("utf8mb4");
+require_once __DIR__ . "/helpers/response.php";
+require_once __DIR__ . "/bootstrap.php";
+require_once __DIR__ . "/helpers/auth.php";
+require_once __DIR__ . "/helpers/files.php";
 
 $path = trim((string) ($_GET["route"] ?? ""), "/");
 if ($path === "") {
@@ -109,34 +96,6 @@ try {
 function route_is(array $segments, array $expected): bool
 {
     return $segments === $expected;
-}
-
-function input_json(): array
-{
-    $raw = file_get_contents("php://input");
-    if (!$raw) {
-        return [];
-    }
-
-    $data = json_decode($raw, true);
-    return is_array($data) ? $data : [];
-}
-
-function input_data(): array
-{
-    $contentType = (string) ($_SERVER["CONTENT_TYPE"] ?? "");
-    if (stripos($contentType, "multipart/form-data") !== false) {
-        return $_POST;
-    }
-
-    return input_json();
-}
-
-function respond(array $data, int $status = 200): void
-{
-    http_response_code($status);
-    echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    exit;
 }
 
 function rows(mysqli $db, string $sql, string $types = "", array $params = []): array
@@ -297,127 +256,6 @@ function candidate_public_status(string $status): string
     };
 }
 
-function get_bearer_token(): string
-{
-    $header = (string) ($_SERVER["HTTP_AUTHORIZATION"] ?? "");
-    if ($header === "" && function_exists("getallheaders")) {
-        $headers = getallheaders();
-        $header = (string) ($headers["Authorization"] ?? $headers["authorization"] ?? "");
-    }
-
-    if (preg_match('/Bearer\s+(.+)/i', $header, $matches)) {
-        return trim($matches[1]);
-    }
-
-    return "";
-}
-
-function create_candidate_session(mysqli $db, int $accountId): string
-{
-    $token = bin2hex(random_bytes(32));
-    $tokenHash = hash("sha256", $token);
-    exec_stmt(
-        $db,
-        "INSERT INTO candidate_sessions (candidate_account_id, token_hash, expires_at)
-         VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))",
-        "is",
-        [$accountId, $tokenHash]
-    );
-    return $token;
-}
-
-function candidate_session(mysqli $db): array
-{
-    ensure_candidate_portal_schema($db);
-    $token = get_bearer_token();
-    if ($token === "") {
-        respond(["error" => "Candidate login is required"], 401);
-    }
-
-    $session = row(
-        $db,
-        "SELECT
-           ca.id AS accountId,
-           ca.email,
-           ca.candidate_id AS candidateId,
-           c.full_name AS fullName,
-           c.phone,
-           c.address,
-           c.education,
-           c.default_resume_file_name AS defaultResumeFileName,
-           c.default_resume_path AS defaultResumePath
-         FROM candidate_sessions cs
-         JOIN candidate_accounts ca ON ca.id = cs.candidate_account_id
-         JOIN candidates c ON c.id = ca.candidate_id
-         WHERE cs.token_hash = ?
-           AND cs.expires_at > NOW()
-           AND ca.status = 'active'
-         LIMIT 1",
-        "s",
-        [hash("sha256", $token)]
-    );
-
-    if (!$session) {
-        respond(["error" => "Candidate session expired or invalid"], 401);
-    }
-
-    return $session;
-}
-
-function optional_candidate_session(mysqli $db): ?array
-{
-    $token = get_bearer_token();
-    if ($token === "") {
-        return null;
-    }
-
-    $session = row(
-        $db,
-        "SELECT
-           ca.id AS accountId,
-           ca.email,
-           ca.candidate_id AS candidateId,
-           c.full_name AS fullName,
-           c.phone,
-           c.address,
-           c.education,
-           c.default_resume_file_name AS defaultResumeFileName,
-           c.default_resume_path AS defaultResumePath
-         FROM candidate_sessions cs
-         JOIN candidate_accounts ca ON ca.id = cs.candidate_account_id
-         JOIN candidates c ON c.id = ca.candidate_id
-         WHERE cs.token_hash = ?
-           AND cs.expires_at > NOW()
-           AND ca.status = 'active'
-         LIMIT 1",
-        "s",
-        [hash("sha256", $token)]
-    );
-
-    return $session ?: null;
-}
-
-function candidate_account_payload(array $session, string $token = ""): array
-{
-    $payload = [
-        "id" => (int) $session["accountId"],
-        "candidateId" => (int) $session["candidateId"],
-        "email" => (string) $session["email"],
-        "fullName" => (string) $session["fullName"],
-        "phone" => (string) ($session["phone"] ?? ""),
-        "address" => (string) ($session["address"] ?? ""),
-        "education" => (string) ($session["education"] ?? ""),
-        "defaultResumeFileName" => $session["defaultResumeFileName"] ?? null,
-        "defaultResumePath" => $session["defaultResumePath"] ?? null,
-    ];
-
-    if ($token !== "") {
-        $payload["token"] = $token;
-    }
-
-    return $payload;
-}
-
 function candidate_register(mysqli $db): void
 {
     ensure_candidate_portal_schema($db);
@@ -470,33 +308,6 @@ function candidate_register(mysqli $db): void
 
     $session = candidate_session_from_account($db, $accountId);
     respond(["candidate" => candidate_account_payload($session, $token)], 201);
-}
-
-function candidate_session_from_account(mysqli $db, int $accountId): array
-{
-    $session = row(
-        $db,
-        "SELECT
-           ca.id AS accountId,
-           ca.email,
-           ca.candidate_id AS candidateId,
-           c.full_name AS fullName,
-           c.phone,
-           c.address,
-           c.education,
-           c.default_resume_file_name AS defaultResumeFileName,
-           c.default_resume_path AS defaultResumePath
-         FROM candidate_accounts ca
-         JOIN candidates c ON c.id = ca.candidate_id
-         WHERE ca.id = ?
-         LIMIT 1",
-        "i",
-        [$accountId]
-    );
-    if (!$session) {
-        throw new RuntimeException("Candidate account not found");
-    }
-    return $session;
 }
 
 function candidate_login(mysqli $db): void
@@ -822,7 +633,10 @@ function jobs_query(): string
         SUM(CASE WHEN a.submitted_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS newApplicants,
         ROUND(COALESCE(AVG(a.total_score), 0), 2) AS avgScore,
         SUM(CASE WHEN a.application_status = 'shortlisted' THEN 1 ELSE 0 END) AS shortlistedCount,
-        SUM(CASE WHEN a.application_status = 'new' THEN 1 ELSE 0 END) AS pendingCount
+        SUM(CASE WHEN a.application_status = 'new' THEN 1 ELSE 0 END) AS pendingCount,
+        SUM(CASE WHEN a.application_status IN ('interview', 'interviewed') THEN 1 ELSE 0 END) AS interviewCount,
+        SUM(CASE WHEN a.application_status = 'rejected' THEN 1 ELSE 0 END) AS rejectedCount,
+        SUM(CASE WHEN a.application_status = 'filtered_out' OR a.eligibility_status = 'filtered_out' THEN 1 ELSE 0 END) AS filteredOutCount
       FROM jobs j
       LEFT JOIN application_links al ON al.job_id = j.id
       LEFT JOIN applications a ON a.job_id = j.id
@@ -1152,19 +966,6 @@ function application_documents(mysqli $db, int $applicationId): array
     }
 
     return $documents;
-}
-
-function public_file_url(string $path): string
-{
-    if ($path === "" || preg_match("#^https?://#i", $path)) {
-        return $path;
-    }
-
-    $scheme = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off") ? "https" : "http";
-    $host = (string) ($_SERVER["HTTP_HOST"] ?? "localhost");
-    $basePath = rtrim(str_replace("\\", "/", dirname((string) ($_SERVER["SCRIPT_NAME"] ?? "/uwc-hr-api/api.php"))), "/");
-
-    return "{$scheme}://{$host}{$basePath}" . (substr($path, 0, 1) === "/" ? $path : "/{$path}");
 }
 
 function update_application(mysqli $db, int $applicationId): void
@@ -2400,26 +2201,6 @@ function save_uploaded_documents(mysqli $db, int $applicationId, string $fallbac
             [$applicationId, $originalName, "{$scheme}://{$host}{$basePath}/uploads/resumes/{$storedName}", $mimeType, $size]
         );
     }
-}
-
-function normalize_uploaded_files(array $fileInput): array
-{
-    if (!isset($fileInput["name"]) || !is_array($fileInput["name"])) {
-        return [$fileInput];
-    }
-
-    $files = [];
-    foreach ($fileInput["name"] as $index => $name) {
-        $files[] = [
-            "name" => $name,
-            "type" => $fileInput["type"][$index] ?? "",
-            "tmp_name" => $fileInput["tmp_name"][$index] ?? "",
-            "error" => $fileInput["error"][$index] ?? UPLOAD_ERR_NO_FILE,
-            "size" => $fileInput["size"][$index] ?? 0,
-        ];
-    }
-
-    return $files;
 }
 
 function users(mysqli $db): void
